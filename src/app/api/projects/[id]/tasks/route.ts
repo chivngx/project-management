@@ -28,8 +28,15 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 const createSchema = z.object({
-  title: z.string().min(2).max(120),
-  description: z.string().max(1000).optional().nullable(),
+  title: z
+    .string()
+    .min(2, "Tiêu đề phải có ít nhất 2 ký tự")
+    .max(120, "Tiêu đề không quá 120 ký tự"),
+  description: z
+    .string()
+    .max(1000, "Mô tả không quá 1000 ký tự")
+    .optional()
+    .nullable(),
   status: z.enum(TASK_STATUSES).optional(),
   priority: z.enum(TASK_PRIORITIES).optional(),
   assigneeId: z.string().optional().nullable(),

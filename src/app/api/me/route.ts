@@ -19,8 +19,17 @@ export async function GET() {
 }
 
 const patchSchema = z.object({
-  name: z.string().min(2, "Tên phải có ít nhất 2 ký tự").max(60).optional(),
-  image: z.string().url().nullable().optional(),
+  name: z
+    .string()
+    .min(2, "Tên phải có ít nhất 2 ký tự")
+    .max(60, "Tên không quá 60 ký tự")
+    .optional(),
+  image: z
+    .string()
+    .url("URL ảnh không hợp lệ")
+    .max(2048, "URL quá dài")
+    .nullable()
+    .optional(),
 });
 
 export async function PATCH(req: Request) {

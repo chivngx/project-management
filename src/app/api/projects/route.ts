@@ -53,13 +53,20 @@ export async function GET() {
 }
 
 const createSchema = z.object({
-  name: z.string().min(2).max(80),
-  description: z.string().max(500).optional().nullable(),
+  name: z
+    .string()
+    .min(2, "Tên dự án phải có ít nhất 2 ký tự")
+    .max(80, "Tên dự án không quá 80 ký tự"),
+  description: z
+    .string()
+    .max(500, "Mô tả không quá 500 ký tự")
+    .optional()
+    .nullable(),
   status: z.enum(PROJECT_STATUSES).optional(),
   priority: z.enum(PROJECT_PRIORITIES).optional(),
   startDate: z.string().datetime().optional().nullable(),
   dueDate: z.string().datetime().optional().nullable(),
-  memberIds: z.array(z.string()).optional(),
+  memberIds: z.array(z.string().min(1)).optional(),
 });
 
 export async function POST(req: Request) {
@@ -76,6 +83,14 @@ export async function POST(req: Request) {
     );
   }
   const d = parsed.data;
+
+  // Cross-field validation: dueDate must be on/after startDate (if both set).
+  if (d.startDate && d.dueDate && new Date(d.dueDate) < new Date(d.startDate)) {
+    return NextResponse.json(
+      { error: "Ngày kết thúc không được trước ngày bắt đầu" },
+      { status: 400 }
+    );
+  }
 
   // Validate memberIds belong to the workspace.
   const validMembers = d.memberIds?.length

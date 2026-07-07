@@ -8,8 +8,16 @@ import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
 type Params = { params: Promise<{ id: string }> };
 
 const patchSchema = z.object({
-  title: z.string().min(2).max(120).optional(),
-  description: z.string().max(1000).optional().nullable(),
+  title: z
+    .string()
+    .min(2, "Tiêu đề phải có ít nhất 2 ký tự")
+    .max(120, "Tiêu đề không quá 120 ký tự")
+    .optional(),
+  description: z
+    .string()
+    .max(1000, "Mô tả không quá 1000 ký tự")
+    .optional()
+    .nullable(),
   status: z.enum(TASK_STATUSES).optional(),
   priority: z.enum(TASK_PRIORITIES).optional(),
   assigneeId: z.string().optional().nullable(),
@@ -39,7 +47,10 @@ export async function PATCH(req: Request, { params }: Params) {
 
   const parsed = patchSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success)
-    return NextResponse.json({ error: "Dữ liệu không hợp lệ" }, { status: 400 });
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" },
+      { status: 400 }
+    );
 
   const d = parsed.data;
   const beforeStatus = task.status;

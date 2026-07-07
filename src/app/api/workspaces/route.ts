@@ -24,7 +24,10 @@ export async function GET() {
 }
 
 const createSchema = z.object({
-  name: z.string().min(2).max(60),
+  name: z
+    .string()
+    .min(2, "Tên workspace phải có ít nhất 2 ký tự")
+    .max(60, "Tên workspace không quá 60 ký tự"),
 });
 
 export async function POST(req: Request) {

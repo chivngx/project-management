@@ -101,7 +101,10 @@ export async function PATCH(req: Request, { params }: Params) {
   const { id } = await params;
   const parsed = patchSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success)
-    return NextResponse.json({ error: "Dữ liệu không hợp lệ" }, { status: 400 });
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" },
+      { status: 400 }
+    );
 
   const existing = await db.project.findFirst({
     where: { id, workspaceId: workspace.id },
@@ -109,9 +112,19 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!existing)
     return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
 
-  // Authorization: any workspace member may edit project details.
-
   const d = parsed.data;
+
+  // Cross-field validation: if both startDate and dueDate are provided in
+  // this patch, dueDate must be on/after startDate. If only one is provided,
+  // compare against the existing value.
+  const effectiveStart = d.startDate !== undefined ? d.startDate : existing.startDate?.toISOString();
+  const effectiveDue = d.dueDate !== undefined ? d.dueDate : existing.dueDate?.toISOString();
+  if (effectiveStart && effectiveDue && new Date(effectiveDue) < new Date(effectiveStart)) {
+    return NextResponse.json(
+      { error: "Ngày kết thúc không được trước ngày bắt đầu" },
+      { status: 400 }
+    );
+  }
   const [updated] = await db.$transaction([
     db.project.update({
       where: { id },
