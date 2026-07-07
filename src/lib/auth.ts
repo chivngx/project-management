@@ -70,7 +70,7 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
+        token.id = user.id ?? "";
         token.image = (user as { image?: string | null }).image ?? null;
         token.tokenVersion = (user as { tokenVersion?: number }).tokenVersion ?? 0;
       }
@@ -98,7 +98,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       // If the token was invalidated (empty id), don't attach a user.
       if (!token.id) {
-        return { ...session, user: undefined } as typeof session;
+        return { ...session, user: undefined } as unknown as typeof session;
       }
       if (session.user) {
         session.user.id = token.id;

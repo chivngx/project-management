@@ -46,9 +46,15 @@ export async function apiFetch<T = unknown>(
   }
 
   if (!res.ok) {
-    const message =
-      (data && typeof data === "object" && "error" in data && String(data.error)) ||
-      `Yêu cầu thất bại (${res.status})`;
+    let message = `Yêu cầu thất bại (${res.status})`;
+    if (
+      data &&
+      typeof data === "object" &&
+      "error" in data &&
+      typeof (data as { error: unknown }).error === "string"
+    ) {
+      message = (data as { error: string }).error;
+    }
     throw new Error(message);
   }
 

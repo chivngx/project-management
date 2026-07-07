@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { db } from "@/lib/db";
+import type { Workspace } from "@prisma/client";
 
 export type WorkspaceLite = {
   id: string;
@@ -19,9 +20,7 @@ export type WorkspaceLite = {
  */
 export const getActiveWorkspace = cache(
   async (userId: string): Promise<{
-    workspace: Awaited<
-      ReturnType<typeof db.workspaceMember.findMany>
-    >[number]["workspace"] | null;
+    workspace: Workspace | null;
     workspaces: WorkspaceLite[];
   }> => {
     const cookieStore = await cookies();
