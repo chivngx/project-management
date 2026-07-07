@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, Users } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Users, ListTodo, Calendar } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +22,8 @@ import { UserMenu, type SessionUserLite } from "@/components/user-menu";
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Dự án", icon: FolderKanban },
+  { href: "/my-tasks", label: "Tác vụ của tôi", icon: ListTodo },
+  { href: "/calendar", label: "Lịch", icon: Calendar },
   { href: "/team", label: "Đội nhóm", icon: Users },
 ];
 

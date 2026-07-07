@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { format } from "date-fns";
-import { Mail, MoreVertical, Crown, Shield, User as UserIcon } from "lucide-react";
+import { Mail, MoreVertical, Crown, Shield, User as UserIcon, Trash2, UserCog } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import {
@@ -20,8 +21,21 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { apiFetch } from "@/lib/api-fetch";
 
 export type TeamRole = "OWNER" | "ADMIN" | "MEMBER";
 
@@ -60,8 +74,59 @@ function getInitials(name: string | null): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-export function MemberCard({ member }: { member: TeamMember }) {
+export function MemberCard({
+  member,
+  currentUserId,
+  currentUserRole,
+  onChanged,
+}: {
+  member: TeamMember;
+  currentUserId?: string;
+  currentUserRole?: TeamRole;
+  onChanged?: () => void;
+}) {
   const displayName = member.name?.trim() || member.email;
+  const isSelf = member.id === currentUserId;
+  const isOwner = currentUserRole === "OWNER";
+  const isTargetOwner = member.role === "OWNER";
+  // Can manage: OWNER can change anyone (except owner role of self);
+  // a user can always "leave" (remove self) via the dropdown.
+  const canChangeRole = isOwner && !isTargetOwner && !isSelf;
+  const canRemove =
+    (!isTargetOwner) && (isSelf || currentUserRole === "OWNER" || currentUserRole === "ADMIN");
+
+  const [removeOpen, setRemoveOpen] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+
+  async function changeRole(role: TeamRole) {
+    setBusy(true);
+    try {
+      await apiFetch(`/api/team/${member.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      });
+      toast.success(`Đã đổi vai trò thành ${ROLE_LABEL[role]}`);
+      onChanged?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể đổi vai trò");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeMember() {
+    setBusy(true);
+    try {
+      await apiFetch(`/api/team/${member.id}`, { method: "DELETE" });
+      toast.success(isSelf ? "Đã rời workspace" : "Đã xóa thành viên");
+      onChanged?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Không thể xóa thành viên");
+    } finally {
+      setBusy(false);
+      setRemoveOpen(false);
+    }
+  }
 
   return (
     <Card className="gap-0 py-0 overflow-hidden">
@@ -78,6 +143,9 @@ export function MemberCard({ member }: { member: TeamMember }) {
           <div className="min-w-0">
             <p className="font-medium text-sm truncate" title={displayName}>
               {displayName}
+              {isSelf && (
+                <span className="ml-1.5 text-xs text-muted-foreground">(bạn)</span>
+              )}
             </p>
             <p className="text-xs text-muted-foreground truncate" title={member.email}>
               {member.email}
@@ -91,11 +159,12 @@ export function MemberCard({ member }: { member: TeamMember }) {
               size="icon"
               className="size-8 -mr-1 -mt-1 text-muted-foreground"
               aria-label="Tùy chọn thành viên"
+              disabled={busy}
             >
               <MoreVertical className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem asChild>
               <a
                 href={`mailto:${member.email}`}
@@ -105,6 +174,38 @@ export function MemberCard({ member }: { member: TeamMember }) {
                 Gửi email
               </a>
             </DropdownMenuItem>
+            {canChangeRole && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <UserCog className="size-3.5" /> Đổi vai trò
+                </DropdownMenuLabel>
+                {(["ADMIN", "MEMBER"] as TeamRole[]).map((r) => (
+                  <DropdownMenuItem
+                    key={r}
+                    onClick={() => changeRole(r)}
+                    disabled={member.role === r}
+                    className="gap-2"
+                  >
+                    <RoleIcon role={r} className="size-3.5" />
+                    {ROLE_LABEL[r]}
+                    {member.role === r && <span className="ml-auto text-xs">✓</span>}
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
+            {canRemove && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setRemoveOpen(true)}
+                  className="text-destructive focus:text-destructive gap-2"
+                >
+                  <Trash2 className="size-4" />
+                  {isSelf ? "Rời workspace" : "Xóa thành viên"}
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </CardHeader>
@@ -122,6 +223,31 @@ export function MemberCard({ member }: { member: TeamMember }) {
           Tham gia {format(new Date(member.joinedAt), "dd/MM/yyyy")}
         </span>
       </CardContent>
+
+      <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isSelf ? "Rời workspace?" : `Xóa ${displayName}?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {isSelf
+                ? "Bạn sẽ mất quyền truy cập vào workspace này. Hành động không thể hoàn tác."
+                : `Thành viên sẽ bị xóa khỏi workspace và không còn truy cập vào các dự án chung.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={removeMember}
+              disabled={busy}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {busy ? "Đang xử lý…" : isSelf ? "Rời workspace" : "Xóa"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

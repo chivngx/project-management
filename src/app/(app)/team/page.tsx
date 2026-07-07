@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, Users, Crown, User as UserIcon, UserPlus } from "lucide-react";
 
 import { apiFetch } from "@/lib/api-fetch";
@@ -70,6 +70,7 @@ function EmptyState({ onInvite }: { onInvite: () => void }) {
 }
 
 export default function TeamPage() {
+  const queryClient = useQueryClient();
   const [query, setQuery] = React.useState("");
   const [inviteOpen, setInviteOpen] = React.useState(false);
 
@@ -77,8 +78,17 @@ export default function TeamPage() {
     queryKey: ["team"],
     queryFn: () => apiFetch<TeamResponse>("/api/team"),
   });
+  const { data: me } = useQuery<{ id: string }>({
+    queryKey: ["me"],
+    queryFn: () => apiFetch<{ id: string }>("/api/me"),
+  });
 
   const members = React.useMemo(() => data ?? [], [data]);
+  // Infer the current user's role from the team list.
+  const currentUserRole = React.useMemo(
+    () => members.find((m) => m.id === me?.id)?.role,
+    [members, me?.id]
+  );
 
   const stats = React.useMemo(() => {
     const ownersAdmins = members.filter(
@@ -169,7 +179,17 @@ export default function TeamPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 max-h-[28rem] overflow-y-auto thin-scroll pr-1">
             {filtered.map((m) => (
-              <MemberCard key={m.id} member={m} />
+              <MemberCard
+                key={m.id}
+                member={m}
+                currentUserId={me?.id}
+                currentUserRole={currentUserRole}
+                onChanged={() => {
+                  queryClient.invalidateQueries({ queryKey: ["team"] });
+                  queryClient.invalidateQueries({ queryKey: ["stats"] });
+                  queryClient.invalidateQueries({ queryKey: ["activities"] });
+                }}
+              />
             ))}
           </div>
         )}

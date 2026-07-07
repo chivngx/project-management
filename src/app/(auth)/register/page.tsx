@@ -16,7 +16,12 @@ const registerSchema = z
   .object({
     name: z.string().min(2, "Tên phải có ít nhất 2 ký tự").max(60),
     email: z.string().email("Email không hợp lệ"),
-    password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự"),
+    password: z
+      .string()
+      .min(8, "Mật khẩu phải có ít nhất 8 ký tự")
+      .regex(/[A-Z]/, "Phải có ít nhất 1 chữ in hoa")
+      .regex(/[a-z]/, "Phải có ít nhất 1 chữ thường")
+      .regex(/[0-9]/, "Phải có ít nhất 1 chữ số"),
     confirm: z.string(),
   })
   .refine((d) => d.password === d.confirm, {
@@ -130,7 +135,7 @@ export default function RegisterPage() {
           <Input
             id="password"
             type="password"
-            placeholder="Ít nhất 6 ký tự"
+            placeholder="Ít nhất 8 ký tự, có hoa/thường/số"
             value={values.password}
             onChange={(e) => setField("password", e.target.value)}
             autoComplete="new-password"

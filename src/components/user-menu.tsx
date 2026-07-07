@@ -3,7 +3,8 @@
 import * as React from "react";
 import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { LogOut, User as UserIcon } from "lucide-react";
+import Link from "next/link";
+import { LogOut, Settings, User as UserIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,6 +55,11 @@ export function UserMenu({ user }: { user: SessionUserLite }) {
           <UserIcon className="h-4 w-4" /> Tài khoản
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/settings">
+            <Settings className="h-4 w-4" /> Cài đặt
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem
           onClick={async () => {
             await signOut({ redirect: false });

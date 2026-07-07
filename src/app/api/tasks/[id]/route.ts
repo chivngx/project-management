@@ -88,6 +88,25 @@ export async function PATCH(req: Request, { params }: Params) {
     });
   }
 
+  // Notify the new assignee when a task is assigned to them (and it's not
+  // a self-assignment).
+  if (
+    d.assigneeId !== undefined &&
+    assigneeId &&
+    assigneeId !== task.assigneeId &&
+    assigneeId !== user.id
+  ) {
+    await db.notification.create({
+      data: {
+        userId: assigneeId,
+        workspaceId: workspace.id,
+        type: "task_assigned",
+        message: `${user.name ?? "Someone"} đã giao tác vụ "${updated.title}" cho bạn`,
+        link: `/projects/${task.projectId}`,
+      },
+    });
+  }
+
   return NextResponse.json({ id: updated.id });
 }
 

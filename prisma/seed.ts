@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 async function main() {
   console.log("Seeding database...");
 
-  const passwordHash = await bcrypt.hash("password123", 10);
+  const passwordHash = await bcrypt.hash("password123", 12);
 
   // --- Users ---
   const alex = await db.user.upsert({

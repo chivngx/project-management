@@ -2,15 +2,33 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
+
+const BCRYPT_COST = 12;
 
 const schema = z.object({
   name: z.string().min(2, "Tên phải có ít nhất 2 ký tự").max(60),
   email: z.string().email("Email không hợp lệ"),
-  password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự"),
+  password: z
+    .string()
+    .min(8, "Mật khẩu phải có ít nhất 8 ký tự")
+    .regex(/[A-Z]/, "Mật khẩu phải có ít nhất 1 chữ in hoa")
+    .regex(/[a-z]/, "Mật khẩu phải có ít nhất 1 chữ thường")
+    .regex(/[0-9]/, "Mật khẩu phải có ít nhất 1 chữ số"),
 });
 
 export async function POST(req: Request) {
   try {
+    // Rate limit: 5 registrations per hour per IP.
+    const ip = getClientIp(req);
+    const rl = rateLimit(`register:${ip}`, 5, 60 * 60 * 1000);
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: "Quá nhiều lần đăng ký. Vui lòng thử lại sau." },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
@@ -28,7 +46,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
 
     // Wrap all writes in a transaction so a failure mid-flow can't leave an
     // un-loginable user (user without workspace, etc.).

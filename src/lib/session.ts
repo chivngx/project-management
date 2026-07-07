@@ -18,8 +18,13 @@ export async function getSession() {
 /** Require auth: returns the user, or redirects to /login. */
 export async function requireUser(): Promise<SessionUser> {
   const session = await getSession();
-  if (!session?.user) redirect("/login");
-  return session.user as unknown as SessionUser;
+  if (!session?.user?.id) redirect("/login");
+  return {
+    id: session.user.id,
+    name: session.user.name,
+    email: session.user.email,
+    image: session.user.image,
+  };
 }
 
 /**

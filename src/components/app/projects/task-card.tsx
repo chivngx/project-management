@@ -3,7 +3,7 @@
 import * as React from "react";
 import { format, isPast, isValid } from "date-fns";
 import { vi } from "date-fns/locale";
-import { Calendar, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Calendar, MessageSquare, MoreVertical, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -40,6 +40,7 @@ import { cn } from "@/lib/utils";
 
 import { getInitials } from "./helpers";
 import { EditTaskDialog } from "./edit-task-dialog";
+import { TaskCommentsDialog } from "./task-comments-dialog";
 import type { Member, Task } from "./types";
 
 interface TaskCardProps {
@@ -59,6 +60,7 @@ export function TaskCard({
   className,
 }: TaskCardProps) {
   const [editOpen, setEditOpen] = React.useState(false);
+  const [commentsOpen, setCommentsOpen] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   const due = task.dueDate ? new Date(task.dueDate) : null;
@@ -97,6 +99,10 @@ export function TaskCard({
             <DropdownMenuItem onClick={() => setEditOpen(true)}>
               <Pencil className="size-4" />
               Chỉnh sửa
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setCommentsOpen(true)}>
+              <MessageSquare className="size-4" />
+              Bình luận
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -193,6 +199,12 @@ export function TaskCard({
         members={members}
         open={editOpen}
         onOpenChange={setEditOpen}
+      />
+
+      <TaskCommentsDialog
+        task={task}
+        open={commentsOpen}
+        onOpenChange={setCommentsOpen}
       />
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

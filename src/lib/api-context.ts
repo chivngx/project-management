@@ -23,10 +23,10 @@ export type ApiContext = {
  */
 export async function getApiContext() {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return { user: null, workspace: null, membership: null };
-
-  const user = session.user as unknown as ApiUser & { id?: string };
-  if (!user.id) return { user: null, workspace: null, membership: null };
+  if (!session?.user?.id) {
+    return { user: null, workspace: null, membership: null };
+  }
+  const user: ApiUser = { id: session.user.id, name: session.user.name, email: session.user.email };
 
   const { workspace } = await getActiveWorkspace(user.id);
   if (!workspace) {
@@ -44,10 +44,10 @@ export async function getApiContext() {
   // If the user has no membership row (edge case: cookie points to a ws they
   // were removed from), treat as no workspace access.
   if (!membership) {
-    return { user: user as ApiUser, workspace: null, membership: null };
+    return { user, workspace: null, membership: null };
   }
 
-  return { user: user as ApiUser, workspace, membership };
+  return { user, workspace, membership };
 }
 
 /** Roles that can administer a workspace (rename/delete/invite). */
