@@ -1,0 +1,778 @@
+     1→     1→"use client";
+     2→     2→
+     3→     3→import * as React from "react";
+     4→     4→import Link from "next/link";
+     5→     5→import { useParams } from "next/navigation";
+     6→     6→import { useQuery, useQueryClient } from "@tanstack/react-query";
+     7→     7→import { format, isPast, isValid } from "date-fns";
+     8→     8→import { vi } from "date-fns/locale";
+     9→     9→import {
+    10→    10→  PieChart,
+    11→    11→  Pie,
+    12→    12→  Cell,
+    13→    13→  ResponsiveContainer,
+    14→    14→  Tooltip,
+    15→    15→} from "recharts";
+    16→    16→import {
+    17→    17→  ArrowLeft,
+    18→    18→  Calendar,
+    19→    19→  CheckCircle2,
+    20→    20→  ListTodo,
+    21→    21→  Pencil,
+    22→    22→  Settings,
+    23→    23→  Trash2,
+    24→    24→  Users,
+    25→    25→} from "lucide-react";
+    26→    26→import { toast } from "sonner";
+    27→    27→
+    28→    28→import { apiFetch } from "@/lib/api-fetch";
+    29→    29→import { Button } from "@/components/ui/button";
+    30→    30→import {
+    31→    31→  Card,
+    32→    32→  CardContent,
+    33→    33→  CardDescription,
+    34→    34→  CardHeader,
+    35→    35→  CardTitle,
+    36→    36→} from "@/components/ui/card";
+    37→    37→import {
+    38→    38→  Avatar,
+    39→    39→  AvatarFallback,
+    40→    40→  AvatarImage,
+    41→    41→} from "@/components/ui/avatar";
+    42→    42→import { Progress } from "@/components/ui/progress";
+    43→    43→import { Separator } from "@/components/ui/separator";
+    44→    44→import { Skeleton } from "@/components/ui/skeleton";
+    45→    45→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    46→    46→import {
+    47→    47→  Dialog,
+    48→    48→  DialogContent,
+    49→    49→  DialogDescription,
+    50→    50→  DialogFooter,
+    51→    51→  DialogHeader,
+    52→    52→  DialogTitle,
+    53→    53→} from "@/components/ui/dialog";
+    54→    54→import {
+    55→    55→  PRIORITY_BADGE,
+    56→    56→  PRIORITY_LABEL,
+    57→    57→  PROJECT_STATUS_BADGE,
+    58→    58→  PROJECT_STATUS_LABEL,
+    59→    59→  TASK_STATUSES,
+    60→    60→  TASK_STATUS_BADGE,
+    61→    61→  TASK_STATUS_LABEL,
+    62→    62→} from "@/lib/constants";
+    63→    63→import { cn } from "@/lib/utils";
+    64→    64→
+    65→    65→import { ProjectSettingsDialog } from "@/components/app/projects/project-settings-dialog";
+    66→    66→import { TasksBoard } from "@/components/app/projects/tasks-board";
+    67→    67→import { getInitials } from "@/components/app/projects/helpers";
+    68→    68→import type {
+    69→    69→  Member,
+    70→    70→  ProjectDetail,
+    71→    71→  Task,
+    72→    72→} from "@/components/app/projects/types";
+    73→    73→import { normalizeProject } from "@/components/app/projects/types";
+    74→    74→
+    75→    75→// Neutral palette matching the dashboard (no indigo/blue).
+    76→    76→const STATUS_COLORS: Record<string, string> = {
+    77→    77→  TODO: "#a1a1aa", // zinc-400
+    78→    78→  IN_PROGRESS: "#f59e0b", // amber-500
+    79→    79→  REVIEW: "#8b5cf6", // violet-500
+    80→    80→  DONE: "#10b981", // emerald-500
+    81→    81→};
+    82→    82→
+    83→    83→export default function ProjectDetailsPage() {
+    84→    84→  const params = useParams<{ id: string }>();
+    85→    85→  const id = params.id;
+    86→    86→  const queryClient = useQueryClient();
+    87→    87→
+    88→    88→  const [settingsOpen, setSettingsOpen] = React.useState(false);
+    89→    89→  const [deleteOpen, setDeleteOpen] = React.useState(false);
+    90→    90→
+    91→    91→  const {
+    92→    92→    data: projectRaw,
+    93→    93→    isLoading,
+    94→    94→    isError,
+    95→    95→    error,
+    96→    96→  } = useQuery<unknown>({
+    97→    97→    queryKey: ["project", id],
+    98→    98→    queryFn: () => apiFetch(`/api/projects/${id}`),
+    99→    99→    enabled: !!id,
+   100→   100→  });
+   101→   101→
+   102→   102→  // Normalize the raw API payload (members are nested under .user on the
+   103→   103→  // detail endpoint — see types.ts).
+   104→   104→  const project = projectRaw
+   105→   105→    ? normalizeProject(projectRaw as Parameters<typeof normalizeProject>[0])
+   106→   106→    : undefined;
+   107→   107→
+   108→   108→  const [deleting, setDeleting] = React.useState(false);
+   109→   109→
+   110→   110→  const handleDelete = async () => {
+   111→   111→    setDeleting(true);
+   112→   112→    try {
+   113→   113→      await apiFetch(`/api/projects/${id}`, { method: "DELETE" });
+   114→   114→      queryClient.invalidateQueries({ queryKey: ["projects"] });
+   115→   115→      queryClient.invalidateQueries({ queryKey: ["stats"] });
+   116→   116→      queryClient.invalidateQueries({ queryKey: ["activities"] });
+   117→   117→      toast.success("Đã xóa dự án");
+   118→   118→      // Navigate back to /projects. Using window.location because we don't
+   119→   119→      // import useRouter just for one navigation, and the page is already a
+   120→   120→      // client component.
+   121→   121→      window.location.href = "/projects";
+   122→   122→    } catch (e) {
+   123→   123→      toast.error(e instanceof Error ? e.message : "Không thể xóa dự án");
+   124→   124→      setDeleting(false);
+   125→   125→    }
+   126→   126→  };
+   127→   127→
+   128→   128→  if (isLoading) {
+   129→   129→    return <ProjectDetailSkeleton />;
+   130→   130→  }
+   131→   131→
+   132→   132→  if (isError || !project) {
+   133→   133→    return (
+   134→   134→      <div className="flex flex-col gap-4">
+   135→   135→        <Button
+   136→   136→          asChild
+   137→   137→          variant="ghost"
+   138→   138→          size="sm"
+   139→   139→          className="w-fit text-muted-foreground"
+   140→   140→        >
+   141→   141→          <Link href="/projects">
+   142→   142→            <ArrowLeft className="size-4" />
+   143→   143→            Quay lại dự án
+   144→   144→          </Link>
+   145→   145→        </Button>
+   146→   146→        <Card>
+   147→   147→          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+   148→   148→            <div className="flex size-12 items-center justify-center rounded-full bg-muted">
+   149→   149→              <ListTodo className="size-6 text-muted-foreground" />
+   150→   150→            </div>
+   151→   151→            <div className="space-y-1">
+   152→   152→              <p className="text-sm font-medium">Không tìm thấy dự án</p>
+   153→   153→              <p className="max-w-sm text-xs text-muted-foreground">
+   154→   154→                {error instanceof Error
+   155→   155→                  ? error.message
+   156→   156→                  : "Dự án có thể đã bị xóa hoặc bạn không có quyền xem."}
+   157→   157→              </p>
+   158→   158→            </div>
+   159→   159→            <Button asChild size="sm">
+   160→   160→              <Link href="/projects">Về danh sách dự án</Link>
+   161→   161→            </Button>
+   162→   162→          </CardContent>
+   163→   163→        </Card>
+   164→   164→      </div>
+   165→   165→    );
+   166→   166→  }
+   167→   167→
+   168→   168→  const due = project.dueDate ? new Date(project.dueDate) : null;
+   169→   169→  const dueValid = due && isValid(due);
+   170→   170→  const overdue = dueValid && isPast(due) && project.status !== "COMPLETED";
+   171→   171→
+   172→   172→  const tasks = project.tasks ?? [];
+   173→   173→  const tasksByStatus = TASK_STATUSES.map((key) => ({
+   174→   174→    key,
+   175→   175→    name: TASK_STATUS_LABEL[key],
+   176→   176→    value: tasks.filter((t) => t.status === key).length,
+   177→   177→  }));
+   178→   178→  const totalTasks = tasks.length;
+   179→   179→  const doneTasks = tasks.filter((t) => t.status === "DONE").length;
+   180→   180→  const progress =
+   181→   181→    totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100);
+   182→   182→
+   183→   183→  return (
+   184→   184→    <div className="flex flex-col gap-6">
+   185→   185→      {/* Back link */}
+   186→   186→      <Button
+   187→   187→        asChild
+   188→   188→        variant="ghost"
+   189→   189→        size="sm"
+   190→   190→        className="w-fit text-muted-foreground"
+   191→   191→      >
+   192→   192→        <Link href="/projects">
+   193→   193→          <ArrowLeft className="size-4" />
+   194→   194→          Quay lại dự án
+   195→   195→        </Link>
+   196→   196→      </Button>
+   197→   197→
+   198→   198→      {/* Header */}
+   199→   199→      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+   200→   200→        <div className="min-w-0 flex-1 space-y-2">
+   201→   201→          <div className="flex flex-wrap items-center gap-2">
+   202→   202→            <span
+   203→   203→              className={cn(
+   204→   204→                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+   205→   205→                PROJECT_STATUS_BADGE[project.status] ?? PROJECT_STATUS_BADGE.ACTIVE
+   206→   206→              )}
+   207→   207→            >
+   208→   208→              {PROJECT_STATUS_LABEL[project.status] ?? project.status}
+   209→   209→            </span>
+   210→   210→            <span
+   211→   211→              className={cn(
+   212→   212→                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+   213→   213→                PRIORITY_BADGE[project.priority] ?? PRIORITY_BADGE.MEDIUM
+   214→   214→              )}
+   215→   215→            >
+   216→   216→              {PRIORITY_LABEL[project.priority] ?? project.priority}
+   217→   217→            </span>
+   218→   218→            {dueValid && (
+   219→   219→              <span
+   220→   220→                className={cn(
+   221→   221→                  "inline-flex items-center gap-1 text-xs",
+   222→   222→                  overdue
+   223→   223→                    ? "font-medium text-red-600 dark:text-red-400"
+   224→   224→                    : "text-muted-foreground"
+   225→   225→                )}
+   226→   226→              >
+   227→   227→                <Calendar className="size-3.5" />
+   228→   228→                Hạn: {format(due, "dd/MM/yyyy", { locale: vi })}
+   229→   229→              </span>
+   230→   230→            )}
+   231→   231→          </div>
+   232→   232→          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+   233→   233→            {project.name}
+   234→   234→          </h1>
+   235→   235→          {project.description && (
+   236→   236→            <p className="max-w-3xl text-sm text-muted-foreground">
+   237→   237→              {project.description}
+   238→   238→            </p>
+   239→   239→          )}
+   240→   240→        </div>
+   241→   241→
+   242→   242→        <div className="flex shrink-0 items-center gap-2">
+   243→   243→          <Button
+   244→   244→            variant="outline"
+   245→   245→            size="sm"
+   246→   246→            onClick={() => setSettingsOpen(true)}
+   247→   247→          >
+   248→   248→            <Settings className="size-4" />
+   249→   249→            Cài đặt
+   250→   250→          </Button>
+   251→   251→          <Button
+   252→   252→            variant="outline"
+   253→   253→            size="sm"
+   254→   254→            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+   255→   255→            onClick={() => setDeleteOpen(true)}
+   256→   256→          >
+   257→   257→            <Trash2 className="size-4" />
+   258→   258→            Xóa
+   259→   259→          </Button>
+   260→   260→        </div>
+   261→   261→      </header>
+   262→   262→
+   263→   263→      {/* Tabs */}
+   264→   264→      <Tabs defaultValue="overview" className="gap-4">
+   265→   265→        <TabsList className="w-fit">
+   266→   266→          <TabsTrigger value="overview">Tổng quan</TabsTrigger>
+   267→   267→          <TabsTrigger value="tasks">
+   268→   268→            Tác vụ
+   269→   269→            <span className="ml-1 rounded-full bg-muted-foreground/15 px-1.5 text-[10px] font-medium tabular-nums">
+   270→   270→              {totalTasks}
+   271→   271→            </span>
+   272→   272→          </TabsTrigger>
+   273→   273→          <TabsTrigger value="members">
+   274→   274→            Thành viên
+   275→   275→            <span className="ml-1 rounded-full bg-muted-foreground/15 px-1.5 text-[10px] font-medium tabular-nums">
+   276→   276→              {project.members.length}
+   277→   277→            </span>
+   278→   278→          </TabsTrigger>
+   279→   279→        </TabsList>
+   280→   280→
+   281→   281→        {/* Overview tab */}
+   282→   282→        <TabsContent value="overview" className="outline-none">
+   283→   283→          <OverviewTab
+   284→   284→            project={project}
+   285→   285→            tasksByStatus={tasksByStatus}
+   286→   286→            totalTasks={totalTasks}
+   287→   287→            doneTasks={doneTasks}
+   288→   288→            progress={progress}
+   289→   289→          />
+   290→   290→        </TabsContent>
+   291→   291→
+   292→   292→        {/* Tasks tab */}
+   293→   293→        <TabsContent value="tasks" className="outline-none">
+   294→   294→          <TasksBoard
+   295→   295→            projectId={project.id}
+   296→   296→            tasks={tasks}
+   297→   297→            members={project.members}
+   298→   298→          />
+   299→   299→        </TabsContent>
+   300→   300→
+   301→   301→        {/* Members tab */}
+   302→   302→        <TabsContent value="members" className="outline-none">
+   303→   303→          <MembersTab members={project.members} tasks={tasks} />
+   304→   304→        </TabsContent>
+   305→   305→      </Tabs>
+   306→   306→
+   307→   307→      <ProjectSettingsDialog
+   308→   308→        project={project}
+   309→   309→        open={settingsOpen}
+   310→   310→        onOpenChange={setSettingsOpen}
+   311→   311→      />
+   312→   312→
+   313→   313→      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+   314→   314→        <DialogContent className="sm:max-w-md">
+   315→   315→          <DialogHeader>
+   316→   316→            <DialogTitle>Xóa dự án?</DialogTitle>
+   317→   317→            <DialogDescription>
+   318→   318→              Hành động này không thể hoàn tác. Dự án{" "}
+   319→   319→              <span className="font-medium text-foreground">
+   320→   320→                &ldquo;{project.name}&rdquo;
+   321→   321→              </span>{" "}
+   322→   322→              cùng tất cả {totalTasks} tác vụ bên trong sẽ bị xóa vĩnh viễn.
+   323→   323→            </DialogDescription>
+   324→   324→          </DialogHeader>
+   325→   325→          <DialogFooter>
+   326→   326→            <Button
+   327→   327→              type="button"
+   328→   328→              variant="outline"
+   329→   329→              onClick={() => setDeleteOpen(false)}
+   330→   330→              disabled={deleting}
+   331→   331→            >
+   332→   332→              Hủy
+   333→   333→            </Button>
+   334→   334→            <Button
+   335→   335→              type="button"
+   336→   336→              variant="destructive"
+   337→   337→              disabled={deleting}
+   338→   338→              onClick={handleDelete}
+   339→   339→            >
+   340→   340→              <Trash2 className="size-4" />
+   341→   341→              Xóa vĩnh viễn
+   342→   342→            </Button>
+   343→   343→          </DialogFooter>
+   344→   344→        </DialogContent>
+   345→   345→      </Dialog>
+   346→   346→    </div>
+   347→   347→  );
+   348→   348→}
+   349→   349→
+   350→   350→/* ---------------- Overview tab ---------------- */
+   351→   351→
+   352→   352→interface OverviewTabProps {
+   353→   353→  project: ProjectDetail;
+   354→   354→  tasksByStatus: Array<{ key: string; name: string; value: number }>;
+   355→   355→  totalTasks: number;
+   356→   356→  doneTasks: number;
+   357→   357→  progress: number;
+   358→   358→}
+   359→   359→
+   360→   360→function OverviewTab({
+   361→   361→  project,
+   362→   362→  tasksByStatus,
+   363→   363→  totalTasks,
+   364→   364→  doneTasks,
+   365→   365→  progress,
+   366→   366→}: OverviewTabProps) {
+   367→   367→  const todoCount = tasksByStatus.find((t) => t.key === "TODO")?.value ?? 0;
+   368→   368→  const inProgressCount =
+   369→   369→    tasksByStatus.find((t) => t.key === "IN_PROGRESS")?.value ?? 0;
+   370→   370→  const reviewCount = tasksByStatus.find((t) => t.key === "REVIEW")?.value ?? 0;
+   371→   371→
+   372→   372→  return (
+   373→   373→    <div className="grid gap-4 lg:grid-cols-3">
+   374→   374→      {/* Left: stats + description */}
+   375→   375→      <div className="flex flex-col gap-4 lg:col-span-2">
+   376→   376→        {/* Key stats */}
+   377→   377→        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   378→   378→          <StatTile
+   379→   379→            label="Tổng tác vụ"
+   380→   380→            value={totalTasks}
+   381→   381→            icon={ListTodo}
+   382→   382→            tone="zinc"
+   383→   383→          />
+   384→   384→          <StatTile
+   385→   385→            label="Đã hoàn thành"
+   386→   386→            value={doneTasks}
+   387→   387→            icon={CheckCircle2}
+   388→   388→            tone="emerald"
+   389→   389→          />
+   390→   390→          <StatTile
+   391→   391→            label="Đang thực hiện"
+   392→   392→            value={inProgressCount}
+   393→   393→            icon={Pencil}
+   394→   394→            tone="amber"
+   395→   395→          />
+   396→   396→          <StatTile
+   397→   397→            label="Cần làm / Review"
+   398→   398→            value={todoCount + reviewCount}
+   399→   399→            icon={Users}
+   400→   400→            tone="violet"
+   401→   401→          />
+   402→   402→        </div>
+   403→   403→
+   404→   404→        {/* Progress */}
+   405→   405→        <Card>
+   406→   406→          <CardHeader>
+   407→   407→            <CardTitle className="text-base">Tiến độ tổng thể</CardTitle>
+   408→   408→            <CardDescription>
+   409→   409→              Tỷ lệ tác vụ đã hoàn thành trên tổng số tác vụ của dự án.
+   410→   410→            </CardDescription>
+   411→   411→          </CardHeader>
+   412→   412→          <CardContent className="space-y-2">
+   413→   413→            <div className="flex items-center justify-between text-sm">
+   414→   414→              <span className="text-muted-foreground">
+   415→   415→                {doneTasks}/{totalTasks} tác vụ đã hoàn thành
+   416→   416→              </span>
+   417→   417→              <span className="font-semibold tabular-nums">{progress}%</span>
+   418→   418→            </div>
+   419→   419→            <Progress value={progress} className="h-2.5" />
+   420→   420→          </CardContent>
+   421→   421→        </Card>
+   422→   422→
+   423→   423→        {/* Description */}
+   424→   424→        <Card>
+   425→   425→          <CardHeader>
+   426→   426→            <CardTitle className="text-base">Mô tả dự án</CardTitle>
+   427→   427→          </CardHeader>
+   428→   428→          <CardContent>
+   429→   429→            {project.description ? (
+   430→   430→              <p className="whitespace-pre-line text-sm text-muted-foreground">
+   431→   431→                {project.description}
+   432→   432→              </p>
+   433→   433→            ) : (
+   434→   434→              <p className="text-sm text-muted-foreground/70">
+   435→   435→                Chưa có mô tả. Nhấn &ldquo;Cài đặt&rdquo; để thêm mô tả cho dự án.
+   436→   436→              </p>
+   437→   437→            )}
+   438→   438→            <Separator className="my-4" />
+   439→   439→            <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
+   440→   440→              <div>
+   441→   441→                <dt className="text-muted-foreground">Trạng thái</dt>
+   442→   442→                <dd className="mt-0.5 font-medium">
+   443→   443→                  {PROJECT_STATUS_LABEL[project.status] ?? project.status}
+   444→   444→                </dd>
+   445→   445→              </div>
+   446→   446→              <div>
+   447→   447→                <dt className="text-muted-foreground">Ưu tiên</dt>
+   448→   448→                <dd className="mt-0.5 font-medium">
+   449→   449→                  {PRIORITY_LABEL[project.priority] ?? project.priority}
+   450→   450→                </dd>
+   451→   451→              </div>
+   452→   452→              <div>
+   453→   453→                <dt className="text-muted-foreground">Thành viên</dt>
+   454→   454→                <dd className="mt-0.5 font-medium">
+   455→   455→                  {project.members.length}
+   456→   456→                </dd>
+   457→   457→              </div>
+   458→   458→            </dl>
+   459→   459→          </CardContent>
+   460→   460→        </Card>
+   461→   461→      </div>
+   462→   462→
+   463→   463→      {/* Right: chart + members */}
+   464→   464→      <div className="flex flex-col gap-4">
+   465→   465→        <Card>
+   466→   466→          <CardHeader>
+   467→   467→            <CardTitle className="text-base">Phân bố tác vụ</CardTitle>
+   468→   468→            <CardDescription>Theo trạng thái hiện tại</CardDescription>
+   469→   469→          </CardHeader>
+   470→   470→          <CardContent>
+   471→   471→            {totalTasks === 0 ? (
+   472→   472→              <div className="flex h-44 flex-col items-center justify-center gap-1 text-center">
+   473→   473→                <p className="text-sm font-medium text-muted-foreground">
+   474→   474→                  Chưa có tác vụ
+   475→   475→                </p>
+   476→   476→                <p className="text-xs text-muted-foreground">
+   477→   477→                  Chuyển sang tab &ldquo;Tác vụ&rdquo; để thêm.
+   478→   478→                </p>
+   479→   479→              </div>
+   480→   480→            ) : (
+   481→   481→              <div className="flex flex-col items-center">
+   482→   482→                <div className="relative h-44 w-full">
+   483→   483→                  <ResponsiveContainer width="100%" height="100%">
+   484→   484→                    <PieChart>
+   485→   485→                      <Pie
+   486→   486→                        data={tasksByStatus}
+   487→   487→                        dataKey="value"
+   488→   488→                        nameKey="name"
+   489→   489→                        innerRadius={56}
+   490→   490→                        outerRadius={84}
+   491→   491→                        paddingAngle={2}
+   492→   492→                        stroke="none"
+   493→   493→                      >
+   494→   494→                        {tasksByStatus.map((entry) => (
+   495→   495→                          <Cell
+   496→   496→                            key={entry.key}
+   497→   497→                            fill={STATUS_COLORS[entry.key] ?? "#a1a1aa"}
+   498→   498→                          />
+   499→   499→                        ))}
+   500→   500→                      </Pie>
+   501→   501→                      <Tooltip
+   502→   502→                        content={({ active, payload }) => {
+   503→   503→                          if (!active || !payload || payload.length === 0)
+   504→   504→                            return null;
+   505→   505→                          const item = payload[0];
+   506→   506→                          return (
+   507→   507→                            <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
+   508→   508→                              <p className="font-medium text-foreground">
+   509→   509→                                {item?.name}
+   510→   510→                              </p>
+   511→   511→                              <p className="mt-0.5 text-muted-foreground">
+   512→   512→                                {item?.value} tác vụ
+   513→   513→                              </p>
+   514→   514→                            </div>
+   515→   515→                          );
+   516→   516→                        }}
+   517→   517→                        wrapperStyle={{ outline: "none" }}
+   518→   518→                      />
+   519→   519→                    </PieChart>
+   520→   520→                  </ResponsiveContainer>
+   521→   521→                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+   522→   522→                    <span className="text-2xl font-semibold tabular-nums">
+   523→   523→                      {totalTasks}
+   524→   524→                    </span>
+   525→   525→                    <span className="text-xs text-muted-foreground">tác vụ</span>
+   526→   526→                  </div>
+   527→   527→                </div>
+   528→   528→                <ul className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5">
+   529→   529→                  {tasksByStatus.map((d) => (
+   530→   530→                    <li
+   531→   531→                      key={d.key}
+   532→   532→                      className="flex items-center gap-1.5 text-xs"
+   533→   533→                    >
+   534→   534→                      <span
+   535→   535→                        className="size-2.5 rounded-full"
+   536→   536→                        style={{
+   537→   537→                          backgroundColor:
+   538→   538→                            STATUS_COLORS[d.key] ?? "#a1a1aa",
+   539→   539→                        }}
+   540→   540→                        aria-hidden
+   541→   541→                      />
+   542→   542→                      <span className="text-muted-foreground">{d.name}</span>
+   543→   543→                      <span className="font-medium tabular-nums text-foreground">
+   544→   544→                        {d.value}
+   545→   545→                      </span>
+   546→   546→                    </li>
+   547→   547→                  ))}
+   548→   548→                </ul>
+   549→   549→              </div>
+   550→   550→            )}
+   551→   551→          </CardContent>
+   552→   552→        </Card>
+   553→   553→
+   554→   554→        <Card>
+   555→   555→          <CardHeader>
+   556→   556→            <CardTitle className="text-base">Thành viên dự án</CardTitle>
+   557→   557→            <CardDescription>
+   558→   558→              {project.members.length} người tham gia
+   559→   559→            </CardDescription>
+   560→   560→          </CardHeader>
+   561→   561→          <CardContent>
+   562→   562→            {project.members.length === 0 ? (
+   563→   563→              <p className="text-sm text-muted-foreground/70">
+   564→   564→                Chưa có thành viên.
+   565→   565→              </p>
+   566→   566→            ) : (
+   567→   567→              <ul className="max-h-72 space-y-2 overflow-y-auto thin-scroll">
+   568→   568→                {project.members.map((m) => (
+   569→   569→                  <li
+   570→   570→                    key={m.id}
+   571→   571→                    className="flex items-center gap-3 rounded-md p-1.5"
+   572→   572→                  >
+   573→   573→                    <Avatar size="sm">
+   574→   574→                      {m.image ? (
+   575→   575→                        <AvatarImage src={m.image} alt={m.name} />
+   576→   576→                      ) : null}
+   577→   577→                      <AvatarFallback>{getInitials(m.name)}</AvatarFallback>
+   578→   578→                    </Avatar>
+   579→   579→                    <div className="min-w-0 flex-1">
+   580→   580→                      <p className="truncate text-sm font-medium">{m.name}</p>
+   581→   581→                      <p className="truncate text-xs text-muted-foreground">
+   582→   582→                        {m.email}
+   583→   583→                      </p>
+   584→   584→                    </div>
+   585→   585→                  </li>
+   586→   586→                ))}
+   587→   587→              </ul>
+   588→   588→            )}
+   589→   589→          </CardContent>
+   590→   590→        </Card>
+   591→   591→      </div>
+   592→   592→    </div>
+   593→   593→  );
+   594→   594→}
+   595→   595→
+   596→   596→/* ---------------- Members tab ---------------- */
+   597→   597→
+   598→   598→interface MembersTabProps {
+   599→   599→  members: Member[];
+   600→   600→  tasks: Task[];
+   601→   601→}
+   602→   602→
+   603→   603→function MembersTab({ members, tasks }: MembersTabProps) {
+   604→   604→  // Compute per-member task summary.
+   605→   605→  const summary = React.useMemo(() => {
+   606→   606→    const map = new Map<
+   607→   607→      string,
+   608→   608→      { total: number; done: number; inProgress: number }
+   609→   609→    >();
+   610→   610→    for (const m of members) {
+   611→   611→      map.set(m.id, { total: 0, done: 0, inProgress: 0 });
+   612→   612→    }
+   613→   613→    for (const t of tasks) {
+   614→   614→      if (!t.assigneeId) continue;
+   615→   615→      const s = map.get(t.assigneeId);
+   616→   616→      if (!s) continue;
+   617→   617→      s.total++;
+   618→   618→      if (t.status === "DONE") s.done++;
+   619→   619→      else if (t.status === "IN_PROGRESS") s.inProgress++;
+   620→   620→    }
+   621→   621→    return map;
+   622→   622→  }, [members, tasks]);
+   623→   623→
+   624→   624→  return (
+   625→   625→    <Card>
+   626→   626→      <CardHeader>
+   627→   627→        <CardTitle className="text-base">Thành viên dự án</CardTitle>
+   628→   628→        <CardDescription>
+   629→   629→          {members.length} người tham gia dự án. Tóm tắt tác vụ được giao cho
+   630→   630→          từng thành viên.
+   631→   631→        </CardDescription>
+   632→   632→      </CardHeader>
+   633→   633→      <CardContent>
+   634→   634→        {members.length === 0 ? (
+   635→   635→          <p className="py-6 text-center text-sm text-muted-foreground/70">
+   636→   636→            Chưa có thành viên trong dự án.
+   637→   637→          </p>
+   638→   638→        ) : (
+   639→   639→          <ul className="max-h-[36rem] divide-y overflow-y-auto thin-scroll">
+   640→   640→            {members.map((m) => {
+   641→   641→              const s = summary.get(m.id) ?? {
+   642→   642→                total: 0,
+   643→   643→                done: 0,
+   644→   644→                inProgress: 0,
+   645→   645→              };
+   646→   646→              const completion =
+   647→   647→                s.total === 0 ? 0 : Math.round((s.done / s.total) * 100);
+   648→   648→              return (
+   649→   649→                <li
+   650→   650→                  key={m.id}
+   651→   651→                  className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+   652→   652→                >
+   653→   653→                  <div className="flex min-w-0 items-center gap-3">
+   654→   654→                    <Avatar>
+   655→   655→                      {m.image ? (
+   656→   656→                        <AvatarImage src={m.image} alt={m.name} />
+   657→   657→                      ) : null}
+   658→   658→                      <AvatarFallback>{getInitials(m.name)}</AvatarFallback>
+   659→   659→                    </Avatar>
+   660→   660→                    <div className="min-w-0">
+   661→   661→                      <p className="truncate text-sm font-medium">{m.name}</p>
+   662→   662→                      <p className="truncate text-xs text-muted-foreground">
+   663→   663→                        {m.email}
+   664→   664→                      </p>
+   665→   665→                    </div>
+   666→   666→                  </div>
+   667→   667→                  <div className="flex shrink-0 items-center gap-4 text-xs text-muted-foreground">
+   668→   668→                    <div className="text-right">
+   669→   669→                      <p className="font-medium text-foreground tabular-nums">
+   670→   670→                        {s.total}
+   671→   671→                      </p>
+   672→   672→                      <p>tác vụ</p>
+   673→   673→                    </div>
+   674→   674→                    <div className="text-right">
+   675→   675→                      <p className="font-medium text-emerald-600 tabular-nums dark:text-emerald-400">
+   676→   676→                        {s.done}
+   677→   677→                      </p>
+   678→   678→                      <p>hoàn thành</p>
+   679→   679→                    </div>
+   680→   680→                    <div className="hidden text-right sm:block">
+   681→   681→                      <p className="font-medium text-amber-600 tabular-nums dark:text-amber-400">
+   682→   682→                        {s.inProgress}
+   683→   683→                      </p>
+   684→   684→                      <p>đang làm</p>
+   685→   685→                    </div>
+   686→   686→                    <div className="w-24">
+   687→   687→                      <Progress value={completion} className="h-1.5" />
+   688→   688→                      <p className="mt-1 text-right text-[10px] tabular-nums">
+   689→   689→                        {completion}%
+   690→   690→                      </p>
+   691→   691→                    </div>
+   692→   692→                  </div>
+   693→   693→                </li>
+   694→   694→              );
+   695→   695→            })}
+   696→   696→          </ul>
+   697→   697→        )}
+   698→   698→      </CardContent>
+   699→   699→    </Card>
+   700→   700→  );
+   701→   701→}
+   702→   702→
+   703→   703→/* ---------------- Stat tile ---------------- */
+   704→   704→
+   705→   705→type Tone = "zinc" | "emerald" | "amber" | "violet";
+   706→   706→
+   707→   707→const TONE_STYLES: Record<Tone, string> = {
+   708→   708→  zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+   709→   709→  emerald:
+   710→   710→    "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+   711→   711→  amber: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+   712→   712→  violet:
+   713→   713→    "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
+   714→   714→};
+   715→   715→
+   716→   716→function StatTile({
+   717→   717→  label,
+   718→   718→  value,
+   719→   719→  icon: Icon,
+   720→   720→  tone,
+   721→   721→}: {
+   722→   722→  label: string;
+   723→   723→  value: number;
+   724→   724→  icon: React.ComponentType<{ className?: string }>;
+   725→   725→  tone: Tone;
+   726→   726→}) {
+   727→   727→  return (
+   728→   728→    <Card>
+   729→   729→      <CardContent className="flex items-center gap-3 p-4">
+   730→   730→        <div
+   731→   731→          className={cn(
+   732→   732→            "flex size-9 shrink-0 items-center justify-center rounded-lg",
+   733→   733→            TONE_STYLES[tone]
+   734→   734→          )}
+   735→   735→          aria-hidden
+   736→   736→        >
+   737→   737→          <Icon className="size-5" />
+   738→   738→        </div>
+   739→   739→        <div className="min-w-0">
+   740→   740→          <p className="truncate text-xs text-muted-foreground">{label}</p>
+   741→   741→          <p className="text-lg font-semibold tabular-nums">{value}</p>
+   742→   742→        </div>
+   743→   743→      </CardContent>
+   744→   744→    </Card>
+   745→   745→  );
+   746→   746→}
+   747→   747→
+   748→   748→/* ---------------- Skeleton ---------------- */
+   749→   749→
+   750→   750→function ProjectDetailSkeleton() {
+   751→   751→  return (
+   752→   752→    <div className="flex flex-col gap-6">
+   753→   753→      <Skeleton className="h-8 w-32" />
+   754→   754→      <div className="space-y-2">
+   755→   755→        <Skeleton className="h-5 w-40" />
+   756→   756→        <Skeleton className="h-7 w-2/3" />
+   757→   757→        <Skeleton className="h-4 w-1/2" />
+   758→   758→      </div>
+   759→   759→      <Skeleton className="h-9 w-72" />
+   760→   760→      <div className="grid gap-4 lg:grid-cols-3">
+   761→   761→        <div className="flex flex-col gap-4 lg:col-span-2">
+   762→   762→          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   763→   763→            {Array.from({ length: 4 }).map((_, i) => (
+   764→   764→              <Skeleton key={i} className="h-20" />
+   765→   765→            ))}
+   766→   766→          </div>
+   767→   767→          <Skeleton className="h-32" />
+   768→   768→          <Skeleton className="h-48" />
+   769→   769→        </div>
+   770→   770→        <div className="flex flex-col gap-4">
+   771→   771→          <Skeleton className="h-64" />
+   772→   772→          <Skeleton className="h-48" />
+   773→   773→        </div>
+   774→   774→      </div>
+   775→   775→    </div>
+   776→   776→  );
+   777→   777→}
+   778→   778→
