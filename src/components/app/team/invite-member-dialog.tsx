@@ -56,6 +56,9 @@ export function InviteMemberDialog({
     onSuccess: () => {
       toast.success("Đã thêm thành viên vào workspace.");
       queryClient.invalidateQueries({ queryKey: ["team"] });
+      // Member count changed + activity logged.
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["activities"] });
       setOpen(false);
       setEmail("");
       setValidationError(null);

@@ -71,9 +71,20 @@ async function main() {
     create: { workspaceId: workspace.id, userId: oliver.id, role: "MEMBER" },
   });
 
-  // --- Projects ---
-  const p1 = await db.project.create({
-    data: {
+  // --- Projects (deterministic IDs for idempotent seeding) ---
+  const p1 = await db.project.upsert({
+    where: { id: "seed-project-k8s" },
+    update: {
+      name: "Kubernetes Migration",
+      description:
+        "Migrate the monolithic app infrastructure to Kubernetes for scalability.",
+      status: "ACTIVE",
+      priority: "HIGH",
+      startDate: new Date("2026-01-20"),
+      dueDate: new Date("2026-03-15"),
+    },
+    create: {
+      id: "seed-project-k8s",
       workspaceId: workspace.id,
       name: "Kubernetes Migration",
       description:
@@ -85,8 +96,19 @@ async function main() {
     },
   });
 
-  const p2 = await db.project.create({
-    data: {
+  const p2 = await db.project.upsert({
+    where: { id: "seed-project-regression" },
+    update: {
+      name: "Automated Regression Suite",
+      description:
+        "Selenium + Playwright hybrid test framework for regression testing.",
+      status: "ACTIVE",
+      priority: "MEDIUM",
+      startDate: new Date("2025-09-01"),
+      dueDate: new Date("2025-12-01"),
+    },
+    create: {
+      id: "seed-project-regression",
       workspaceId: workspace.id,
       name: "Automated Regression Suite",
       description:
@@ -98,8 +120,18 @@ async function main() {
     },
   });
 
-  const p3 = await db.project.create({
-    data: {
+  const p3 = await db.project.upsert({
+    where: { id: "seed-project-redesign" },
+    update: {
+      name: "Website Redesign",
+      description: "Refresh marketing site with new design system.",
+      status: "PLANNING",
+      priority: "LOW",
+      startDate: new Date("2026-02-01"),
+      dueDate: new Date("2026-04-30"),
+    },
+    create: {
+      id: "seed-project-redesign",
       workspaceId: workspace.id,
       name: "Website Redesign",
       description: "Refresh marketing site with new design system.",
@@ -110,7 +142,7 @@ async function main() {
     },
   });
 
-  // Project members
+  // Project members (already idempotent via upsert on unique constraint).
   for (const [proj, members] of [
     [p1, [alex, john, oliver]],
     [p2, [alex, john, oliver]],
@@ -125,9 +157,10 @@ async function main() {
     }
   }
 
-  // --- Tasks ---
+  // --- Tasks (deterministic IDs) ---
   const tasks = [
     {
+      id: "seed-task-1",
       title: "Security Audit",
       projectId: p1.id,
       status: "IN_PROGRESS",
@@ -137,6 +170,7 @@ async function main() {
       dueDate: new Date("2026-02-01"),
     },
     {
+      id: "seed-task-2",
       title: "Set Up EKS Cluster",
       projectId: p1.id,
       status: "TODO",
@@ -146,6 +180,7 @@ async function main() {
       dueDate: new Date("2026-01-30"),
     },
     {
+      id: "seed-task-3",
       title: "Implement CI/CD with GitHub Actions",
       projectId: p1.id,
       status: "TODO",
@@ -155,6 +190,7 @@ async function main() {
       dueDate: new Date("2026-02-15"),
     },
     {
+      id: "seed-task-4",
       title: "Containerize Services",
       projectId: p1.id,
       status: "DONE",
@@ -164,6 +200,7 @@ async function main() {
       dueDate: new Date("2026-01-22"),
     },
     {
+      id: "seed-task-5",
       title: "Migrate to Playwright 1.48",
       projectId: p2.id,
       status: "IN_PROGRESS",
@@ -173,6 +210,7 @@ async function main() {
       dueDate: new Date("2025-11-15"),
     },
     {
+      id: "seed-task-6",
       title: "Parallel Test Execution",
       projectId: p2.id,
       status: "TODO",
@@ -182,6 +220,7 @@ async function main() {
       dueDate: new Date("2025-11-20"),
     },
     {
+      id: "seed-task-7",
       title: "Visual Snapshot Comparison",
       projectId: p2.id,
       status: "TODO",
@@ -191,6 +230,7 @@ async function main() {
       dueDate: new Date("2025-12-01"),
     },
     {
+      id: "seed-task-8",
       title: "Design System Audit",
       projectId: p3.id,
       status: "TODO",
@@ -201,12 +241,14 @@ async function main() {
     },
   ];
   for (const t of tasks) {
-    await db.task.create({ data: t });
+    const { id, ...data } = t;
+    await db.task.upsert({ where: { id }, update: data, create: t });
   }
 
-  // --- Activity ---
+  // --- Activity (deterministic IDs) ---
   const activities = [
     {
+      id: "seed-act-1",
       workspaceId: workspace.id,
       userId: alex.id,
       action: "created_project",
@@ -215,6 +257,7 @@ async function main() {
       message: "Alex created project Kubernetes Migration",
     },
     {
+      id: "seed-act-2",
       workspaceId: workspace.id,
       userId: alex.id,
       action: "created_project",
@@ -223,14 +266,16 @@ async function main() {
       message: "Alex created project Automated Regression Suite",
     },
     {
+      id: "seed-act-3",
       workspaceId: workspace.id,
       userId: john.id,
       action: "completed_task",
       entityType: "TASK",
-      entityId: "",
+      entityId: "seed-task-4",
       message: "John completed task Containerize Services",
     },
     {
+      id: "seed-act-4",
       workspaceId: workspace.id,
       userId: oliver.id,
       action: "updated_project",
@@ -240,10 +285,11 @@ async function main() {
     },
   ];
   for (const a of activities) {
-    await db.activity.create({ data: a });
+    const { id, ...data } = a;
+    await db.activity.upsert({ where: { id }, update: data, create: a });
   }
 
-  console.log("Seed complete.");
+  console.log("Seed complete (idempotent).");
   console.log("Login with: alex@example.com / password123");
 }
 

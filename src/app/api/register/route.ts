@@ -30,79 +30,85 @@ export async function POST(req: Request) {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const user = await db.user.create({
-      data: {
-        name,
-        email: normalized,
-        passwordHash,
-      },
-    });
-
-    // Give the new user their own workspace + a starter project so the
-    // workspace isn't empty.
-    const workspace = await db.workspace.create({
-      data: {
-        name: `${name.split(" ")[0]}'s Workspace`,
-        ownerId: user.id,
-        members: {
-          create: { userId: user.id, role: "OWNER" },
+    // Wrap all writes in a transaction so a failure mid-flow can't leave an
+    // un-loginable user (user without workspace, etc.).
+    const { workspace } = await db.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name,
+          email: normalized,
+          passwordHash,
         },
-      },
-    });
+      });
 
-    const starter = await db.project.create({
-      data: {
-        workspaceId: workspace.id,
-        name: "Getting Started",
-        description:
-          "A starter project to explore the app. Feel free to rename or delete it.",
-        status: "ACTIVE",
-        priority: "MEDIUM",
-        startDate: new Date(),
-        dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14),
-        members: { create: { userId: user.id, role: "MEMBER" } },
-      },
-    });
+      // Give the new user their own workspace + a starter project so the
+      // workspace isn't empty.
+      const workspace = await tx.workspace.create({
+        data: {
+          name: `${name.split(" ")[0]}'s Workspace`,
+          ownerId: user.id,
+          members: {
+            create: { userId: user.id, role: "OWNER" },
+          },
+        },
+      });
 
-    await db.task.createMany({
-      data: [
-        {
-          projectId: starter.id,
-          title: "Create your first project",
-          status: "TODO",
+      const starter = await tx.project.create({
+        data: {
+          workspaceId: workspace.id,
+          name: "Getting Started",
+          description:
+            "A starter project to explore the app. Feel free to rename or delete it.",
+          status: "ACTIVE",
           priority: "MEDIUM",
-          creatorId: user.id,
-          assigneeId: user.id,
-          dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
+          startDate: new Date(),
+          dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14),
+          members: { create: { userId: user.id, role: "MEMBER" } },
         },
-        {
-          projectId: starter.id,
-          title: "Invite a team member",
-          status: "TODO",
-          priority: "LOW",
-          creatorId: user.id,
-          assigneeId: user.id,
-        },
-        {
-          projectId: starter.id,
-          title: "Explore the dashboard",
-          status: "DONE",
-          priority: "LOW",
-          creatorId: user.id,
-          assigneeId: user.id,
-        },
-      ],
-    });
+      });
 
-    await db.activity.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
-        action: "created_workspace",
-        entityType: "WORKSPACE",
-        entityId: workspace.id,
-        message: `${name} created workspace ${workspace.name}`,
-      },
+      await tx.task.createMany({
+        data: [
+          {
+            projectId: starter.id,
+            title: "Create your first project",
+            status: "TODO",
+            priority: "MEDIUM",
+            creatorId: user.id,
+            assigneeId: user.id,
+            dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
+          },
+          {
+            projectId: starter.id,
+            title: "Invite a team member",
+            status: "TODO",
+            priority: "LOW",
+            creatorId: user.id,
+            assigneeId: user.id,
+          },
+          {
+            projectId: starter.id,
+            title: "Explore the dashboard",
+            status: "DONE",
+            priority: "LOW",
+            creatorId: user.id,
+            assigneeId: user.id,
+          },
+        ],
+      });
+
+      await tx.activity.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: user.id,
+          action: "created_workspace",
+          entityType: "WORKSPACE",
+          entityId: workspace.id,
+          message: `${name} created workspace ${workspace.name}`,
+        },
+      });
+
+      return { workspace };
     });
 
     return NextResponse.json({ ok: true });

@@ -104,6 +104,7 @@ export default function ProjectsPage() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Tìm theo tên hoặc mô tả…"
             className="pl-9"
+            aria-label="Tìm kiếm dự án"
           />
         </div>
         <Select value={status} onValueChange={setStatus}>

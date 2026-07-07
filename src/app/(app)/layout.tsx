@@ -35,7 +35,7 @@ export default async function AppLayout({
           id: user.id,
           name: user.name,
           email: user.email,
-          image: null,
+          image: user.image,
         }}
         activeWorkspace={workspace}
         workspaces={workspaces}

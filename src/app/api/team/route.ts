@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getApiContext } from "@/lib/api-context";
+import { getApiContext, canAdmin, forbidden } from "@/lib/api-context";
 
 export async function GET() {
   const { user, workspace } = await getApiContext();
@@ -30,10 +30,14 @@ const inviteSchema = z.object({ email: z.string().email() });
 
 /** Add an existing user (by email) to the active workspace as a MEMBER. */
 export async function POST(req: Request) {
-  const { user, workspace } = await getApiContext();
+  const { user, workspace, membership } = await getApiContext();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace)
     return NextResponse.json({ error: "No workspace" }, { status: 400 });
+
+  // Authorization: only OWNER/ADMIN may invite members.
+  if (!canAdmin(membership))
+    return forbidden("Chỉ quản trị viên mới được mời thành viên");
 
   const parsed = inviteSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success)
@@ -61,20 +65,21 @@ export async function POST(req: Request) {
     );
   }
 
-  await db.workspaceMember.create({
-    data: { workspaceId: workspace.id, userId: target.id, role: "MEMBER" },
-  });
-
-  await db.activity.create({
-    data: {
-      workspaceId: workspace.id,
-      userId: user.id,
-      action: "added_member",
-      entityType: "MEMBER",
-      entityId: target.id,
-      message: `${user.name ?? "Someone"} added ${target.name} to the workspace`,
-    },
-  });
+  await db.$transaction([
+    db.workspaceMember.create({
+      data: { workspaceId: workspace.id, userId: target.id, role: "MEMBER" },
+    }),
+    db.activity.create({
+      data: {
+        workspaceId: workspace.id,
+        userId: user.id,
+        action: "added_member",
+        entityType: "MEMBER",
+        entityId: target.id,
+        message: `${user.name ?? "Someone"} added ${target.name} to the workspace`,
+      },
+    }),
+  ]);
 
   return NextResponse.json({ ok: true });
 }

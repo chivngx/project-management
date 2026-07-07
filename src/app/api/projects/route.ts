@@ -11,18 +11,23 @@ export async function GET() {
 
   const projects = await db.project.findMany({
     where: { workspaceId: workspace.id },
+    // SECURITY: select only safe user fields (never expose passwordHash).
     include: {
-      members: { include: { user: true } },
-      _count: { select: { tasks: true } },
+      members: {
+        include: {
+          user: { select: { id: true, name: true, email: true, image: true } },
+        },
+      },
+      // Filtered counts for total + done tasks.
+      tasks: { select: { status: true } },
     },
     orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json(
     projects.map((p) => {
-      const done = p._count.tasks
-        ? null // computed on demand below
-        : 0;
+      const total = p.tasks.length;
+      const done = p.tasks.filter((t) => t.status === "DONE").length;
       return {
         id: p.id,
         name: p.name,
@@ -40,7 +45,7 @@ export async function GET() {
           email: m.user.email,
           image: m.user.image,
         })),
-        taskCount: p._count.tasks,
+        taskCount: total,
         doneCount: done,
       };
     })
@@ -80,35 +85,39 @@ export async function POST(req: Request) {
       })
     : [];
 
-  const project = await db.project.create({
-    data: {
-      workspaceId: workspace.id,
-      name: d.name,
-      description: d.description ?? null,
-      status: d.status ?? "ACTIVE",
-      priority: d.priority ?? "MEDIUM",
-      startDate: d.startDate ? new Date(d.startDate) : null,
-      dueDate: d.dueDate ? new Date(d.dueDate) : null,
-      members: {
-        create: [
-          { userId: user.id, role: "MEMBER" },
-          ...validMembers
-            .filter((m) => m.userId !== user.id)
-            .map((m) => ({ userId: m.userId, role: "MEMBER" as const })),
-        ],
+  const project = await db.$transaction(async (tx) => {
+    const created = await tx.project.create({
+      data: {
+        workspaceId: workspace.id,
+        name: d.name,
+        description: d.description ?? null,
+        status: d.status ?? "ACTIVE",
+        priority: d.priority ?? "MEDIUM",
+        startDate: d.startDate ? new Date(d.startDate) : null,
+        dueDate: d.dueDate ? new Date(d.dueDate) : null,
+        members: {
+          create: [
+            { userId: user.id, role: "MEMBER" },
+            ...validMembers
+              .filter((m) => m.userId !== user.id)
+              .map((m) => ({ userId: m.userId, role: "MEMBER" as const })),
+          ],
+        },
       },
-    },
-  });
+    });
 
-  await db.activity.create({
-    data: {
-      workspaceId: workspace.id,
-      userId: user.id,
-      action: "created_project",
-      entityType: "PROJECT",
-      entityId: project.id,
-      message: `${user.name ?? "Someone"} created project ${project.name}`,
-    },
+    await tx.activity.create({
+      data: {
+        workspaceId: workspace.id,
+        userId: user.id,
+        action: "created_project",
+        entityType: "PROJECT",
+        entityId: created.id,
+        message: `${user.name ?? "Someone"} created project ${created.name}`,
+      },
+    });
+
+    return created;
   });
 
   return NextResponse.json({ id: project.id });

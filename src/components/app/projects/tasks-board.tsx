@@ -63,6 +63,8 @@ export function TasksBoard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["project", projectId] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
+      // Task status change (esp. to DONE) logs an activity.
+      queryClient.invalidateQueries({ queryKey: ["activities"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -73,6 +75,7 @@ export function TasksBoard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["project", projectId] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["activities"] });
       toast.success("Đã xóa tác vụ");
     },
     onError: (e: Error) => toast.error(e.message),

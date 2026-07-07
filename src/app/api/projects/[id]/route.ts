@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getApiContext } from "@/lib/api-context";
+import { getApiContext, canAdmin, forbidden } from "@/lib/api-context";
 import { PROJECT_PRIORITIES, PROJECT_STATUSES } from "@/lib/constants";
 
 type Params = { params: Promise<{ id: string }> };
@@ -12,23 +12,76 @@ export async function GET(_req: Request, { params }: Params) {
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const { id } = await params;
+  // SECURITY: only select safe user fields (never expose passwordHash).
   const project = await db.project.findFirst({
     where: { id, workspaceId: workspace.id },
     include: {
-      members: { include: { user: true } },
+      members: {
+        include: {
+          user: { select: { id: true, name: true, email: true, image: true } },
+        },
+      },
       tasks: {
         include: {
-          assignee: true,
-          creator: true,
+          assignee: { select: { id: true, name: true, email: true, image: true } },
+          creator: { select: { id: true, name: true, email: true, image: true } },
         },
         orderBy: { createdAt: "asc" },
       },
+      _count: { select: { tasks: true } },
     },
   });
   if (!project)
     return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
 
-  return NextResponse.json(project);
+  // Map to a flat, consistent response shape (matches GET /api/projects).
+  return NextResponse.json({
+    id: project.id,
+    workspaceId: project.workspaceId,
+    name: project.name,
+    description: project.description,
+    status: project.status,
+    priority: project.priority,
+    startDate: project.startDate,
+    dueDate: project.dueDate,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+    members: project.members.map((m) => ({
+      id: m.user.id,
+      name: m.user.name,
+      email: m.user.email,
+      image: m.user.image,
+      role: m.role,
+    })),
+    tasks: project.tasks.map((t) => ({
+      id: t.id,
+      projectId: t.projectId,
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: t.priority,
+      assigneeId: t.assigneeId,
+      assignee: t.assignee
+        ? {
+            id: t.assignee.id,
+            name: t.assignee.name,
+            email: t.assignee.email,
+            image: t.assignee.image,
+          }
+        : null,
+      creatorId: t.creatorId,
+      creator: {
+        id: t.creator.id,
+        name: t.creator.name,
+        email: t.creator.email,
+        image: t.creator.image,
+      },
+      dueDate: t.dueDate,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+    })),
+    taskCount: project._count.tasks,
+  });
 }
 
 const patchSchema = z.object({
@@ -56,41 +109,47 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!existing)
     return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
 
-  const d = parsed.data;
-  const updated = await db.project.update({
-    where: { id },
-    data: {
-      ...(d.name !== undefined ? { name: d.name } : {}),
-      ...(d.description !== undefined ? { description: d.description } : {}),
-      ...(d.status ? { status: d.status } : {}),
-      ...(d.priority ? { priority: d.priority } : {}),
-      ...(d.startDate !== undefined
-        ? { startDate: d.startDate ? new Date(d.startDate) : null }
-        : {}),
-      ...(d.dueDate !== undefined
-        ? { dueDate: d.dueDate ? new Date(d.dueDate) : null }
-        : {}),
-    },
-  });
+  // Authorization: any workspace member may edit project details.
 
-  await db.activity.create({
-    data: {
-      workspaceId: workspace.id,
-      userId: user.id,
-      action: "updated_project",
-      entityType: "PROJECT",
-      entityId: updated.id,
-      message: `${user.name ?? "Someone"} updated project ${updated.name}`,
-    },
-  });
+  const d = parsed.data;
+  const [updated] = await db.$transaction([
+    db.project.update({
+      where: { id },
+      data: {
+        ...(d.name !== undefined ? { name: d.name } : {}),
+        ...(d.description !== undefined ? { description: d.description } : {}),
+        ...(d.status ? { status: d.status } : {}),
+        ...(d.priority ? { priority: d.priority } : {}),
+        ...(d.startDate !== undefined
+          ? { startDate: d.startDate ? new Date(d.startDate) : null }
+          : {}),
+        ...(d.dueDate !== undefined
+          ? { dueDate: d.dueDate ? new Date(d.dueDate) : null }
+          : {}),
+      },
+    }),
+    db.activity.create({
+      data: {
+        workspaceId: workspace.id,
+        userId: user.id,
+        action: "updated_project",
+        entityType: "PROJECT",
+        entityId: id,
+        message: `${user.name ?? "Someone"} updated project ${existing.name}`,
+      },
+    }),
+  ]);
 
   return NextResponse.json({ id: updated.id });
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
-  const { user, workspace } = await getApiContext();
+  const { user, workspace, membership } = await getApiContext();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
+
+  // Authorization: only OWNER/ADMIN may delete a project.
+  if (!canAdmin(membership)) return forbidden("Chỉ quản trị viên mới được xóa dự án");
 
   const { id } = await params;
   const existing = await db.project.findFirst({
@@ -99,18 +158,19 @@ export async function DELETE(_req: Request, { params }: Params) {
   if (!existing)
     return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
 
-  await db.project.delete({ where: { id } });
-
-  await db.activity.create({
-    data: {
-      workspaceId: workspace.id,
-      userId: user.id,
-      action: "deleted_project",
-      entityType: "PROJECT",
-      entityId: id,
-      message: `${user.name ?? "Someone"} deleted project ${existing.name}`,
-    },
-  });
+  await db.$transaction([
+    db.project.delete({ where: { id } }),
+    db.activity.create({
+      data: {
+        workspaceId: workspace.id,
+        userId: user.id,
+        action: "deleted_project",
+        entityType: "PROJECT",
+        entityId: id,
+        message: `${user.name ?? "Someone"} deleted project ${existing.name}`,
+      },
+    }),
+  ]);
 
   return NextResponse.json({ ok: true });
 }

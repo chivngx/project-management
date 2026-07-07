@@ -123,7 +123,13 @@ export function TasksByStatusChart({
           </div>
         ) : (
           <div className="flex flex-col items-center">
-            <div className="relative h-48 w-full">
+            <div
+              className="relative h-48 w-full"
+              role="img"
+              aria-label={`Biểu đồ tác vụ theo trạng thái: ${data
+                .map((d) => `${d.name}: ${d.value}`)
+                .join(", ")}`}
+            >
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie

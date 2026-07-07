@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, isPast, isValid } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -70,7 +70,6 @@ import type {
   ProjectDetail,
   Task,
 } from "@/components/app/projects/types";
-import { normalizeProject } from "@/components/app/projects/types";
 
 // Neutral palette matching the dashboard (no indigo/blue).
 const STATUS_COLORS: Record<string, string> = {
@@ -83,27 +82,22 @@ const STATUS_COLORS: Record<string, string> = {
 export default function ProjectDetailsPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
+  const router = useRouter();
   const queryClient = useQueryClient();
 
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   const {
-    data: projectRaw,
+    data: project,
     isLoading,
     isError,
     error,
-  } = useQuery<unknown>({
+  } = useQuery<ProjectDetail>({
     queryKey: ["project", id],
     queryFn: () => apiFetch(`/api/projects/${id}`),
     enabled: !!id,
   });
-
-  // Normalize the raw API payload (members are nested under .user on the
-  // detail endpoint — see types.ts).
-  const project = projectRaw
-    ? normalizeProject(projectRaw as Parameters<typeof normalizeProject>[0])
-    : undefined;
 
   const [deleting, setDeleting] = React.useState(false);
 
@@ -115,10 +109,8 @@ export default function ProjectDetailsPage() {
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       queryClient.invalidateQueries({ queryKey: ["activities"] });
       toast.success("Đã xóa dự án");
-      // Navigate back to /projects. Using window.location because we don't
-      // import useRouter just for one navigation, and the page is already a
-      // client component.
-      window.location.href = "/projects";
+      // Use client-side navigation to preserve SPA state & TanStack cache.
+      router.replace("/projects");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Không thể xóa dự án");
       setDeleting(false);

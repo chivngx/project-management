@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getApiContext } from "@/lib/api-context";
+import { getApiContext, canAdmin, forbidden } from "@/lib/api-context";
 import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
 
 type Params = { params: Promise<{ id: string }> };
@@ -16,7 +16,7 @@ const patchSchema = z.object({
 });
 
 export async function PATCH(req: Request, { params }: Params) {
-  const { user, workspace } = await getApiContext();
+  const { user, workspace, membership } = await getApiContext();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
@@ -27,6 +27,14 @@ export async function PATCH(req: Request, { params }: Params) {
   });
   if (!task)
     return NextResponse.json({ error: "Không tìm thấy task" }, { status: 404 });
+
+  // Authorization: creator, assignee, or workspace admin may edit.
+  const canEdit =
+    task.creatorId === user.id ||
+    task.assigneeId === user.id ||
+    canAdmin(membership);
+  if (!canEdit)
+    return forbidden("Bạn chỉ có thể sửa tác vụ do mình tạo hoặc được giao");
 
   const parsed = patchSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success)
@@ -44,7 +52,12 @@ export async function PATCH(req: Request, { params }: Params) {
           projectId_userId: { projectId: task.projectId, userId: d.assigneeId },
         },
       });
-      assigneeId = member ? d.assigneeId : task.assigneeId;
+      if (!member)
+        return NextResponse.json(
+          { error: "Người được giao không phải thành viên dự án" },
+          { status: 400 }
+        );
+      assigneeId = d.assigneeId;
     }
   }
 
@@ -79,17 +92,36 @@ export async function PATCH(req: Request, { params }: Params) {
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
-  const { user, workspace } = await getApiContext();
+  const { user, workspace, membership } = await getApiContext();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const { id } = await params;
   const task = await db.task.findFirst({
     where: { id, project: { workspaceId: workspace.id } },
+    select: { id: true, title: true, creatorId: true },
   });
   if (!task)
     return NextResponse.json({ error: "Không tìm thấy task" }, { status: 404 });
 
+  // Authorization: task creator or workspace admin may delete.
+  const canDelete = task.creatorId === user.id || canAdmin(membership);
+  if (!canDelete)
+    return forbidden("Bạn chỉ có thể xóa tác vụ do mình tạo");
+
   await db.task.delete({ where: { id } });
+
+  // Activity log for task deletion (was missing before).
+  await db.activity.create({
+    data: {
+      workspaceId: workspace.id,
+      userId: user.id,
+      action: "deleted_task",
+      entityType: "TASK",
+      entityId: id,
+      message: `${user.name ?? "Someone"} deleted task ${task.title}`,
+    },
+  });
+
   return NextResponse.json({ ok: true });
 }

@@ -46,12 +46,17 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        // Persist the avatar image so the session/UI can render it.
+        // `user.image` comes from the authorize() return.
+        token.image = (user as { image?: string | null }).image ?? null;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         (session.user as { id?: string }).id = token.id as string;
+        (session.user as { image?: string | null }).image =
+          (token.image as string | null) ?? null;
       }
       return session;
     },
