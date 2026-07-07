@@ -62,8 +62,25 @@ export function ProjectCard({
   const visibleMembers = project.members.slice(0, 4);
   const extraMembers = Math.max(0, project.memberCount - visibleMembers.length);
 
+  // Priority color strip on the left edge (like Linear/Jira) so priority is
+  // scannable at a glance without reading the badge.
+  const PRIORITY_STRIP: Record<string, string> = {
+    LOW: "bg-zinc-300 dark:bg-zinc-600",
+    MEDIUM: "bg-sky-400",
+    HIGH: "bg-orange-400",
+    CRITICAL: "bg-red-500",
+  };
+
   return (
     <Card className="group relative gap-0 overflow-hidden py-0 transition-all hover:border-foreground/20 hover:shadow-md">
+      {/* Priority color strip */}
+      <div
+        className={cn(
+          "absolute inset-y-0 left-0 w-1",
+          PRIORITY_STRIP[project.priority] ?? PRIORITY_STRIP.MEDIUM
+        )}
+        aria-hidden
+      />
       <CardHeader className="gap-2 p-4 pb-0">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1 space-y-2">

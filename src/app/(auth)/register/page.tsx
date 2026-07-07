@@ -172,15 +172,15 @@ export default function RegisterPage() {
         </Button>
       </form>
 
-      <p className="text-center text-sm text-muted-foreground">
+      <div className="text-center text-sm text-muted-foreground">
         Đã có tài khoản?{" "}
         <Link
           href="/login"
-          className="font-medium text-foreground underline-offset-4 hover:underline"
+          className="font-semibold text-foreground underline-offset-4 hover:underline"
         >
           Đăng nhập
         </Link>
-      </p>
+      </div>
     </div>
   );
 }

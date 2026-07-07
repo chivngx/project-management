@@ -131,15 +131,15 @@ export default function LoginPage() {
         </div>
       )}
 
-      <p className="text-center text-sm text-muted-foreground">
+      <div className="text-center text-sm text-muted-foreground">
         Chưa có tài khoản?{" "}
         <Link
           href="/register"
-          className="font-medium text-foreground underline-offset-4 hover:underline"
+          className="font-semibold text-foreground underline-offset-4 hover:underline"
         >
-          Đăng ký
+          Đăng ký ngay
         </Link>
-      </p>
+      </div>
     </div>
   );
 }

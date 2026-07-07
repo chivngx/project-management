@@ -129,7 +129,7 @@ export default function DashboardPage() {
       {/* Stat cards */}
       <section
         aria-label="Tổng quan"
-        className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
+        className="grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4"
       >
         <StatCard
           label="Tổng dự án"
@@ -138,7 +138,7 @@ export default function DashboardPage() {
           value={totals?.projects ?? 0}
           helper={
             totals
-              ? `${totals.activeProjects} đang hoạt động · ${totals.completedProjects} đã hoàn thành`
+              ? `${totals.activeProjects} đang hoạt động`
               : undefined
           }
           loading={statsLoading && !totals}
@@ -149,7 +149,7 @@ export default function DashboardPage() {
           tone="emerald"
           value={totals?.activeProjects ?? 0}
           helper={
-            totals ? `Trên tổng số ${totals.projects} dự án` : undefined
+            totals ? `${totals.completedProjects} đã hoàn thành` : undefined
           }
           loading={statsLoading && !totals}
         />
@@ -185,7 +185,7 @@ export default function DashboardPage() {
           helper={
             totals
               ? totals.overdueTasks > 0
-                ? "Cần xử lý ngay"
+                ? `Trên ${totals.tasks} tác vụ`
                 : "Không có tác vụ quá hạn"
               : undefined
           }

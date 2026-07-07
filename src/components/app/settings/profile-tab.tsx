@@ -96,10 +96,13 @@ export function ProfileTab() {
         <Label htmlFor="image">URL ảnh đại diện</Label>
         <Input
           id="image"
-          placeholder="https://…"
+          placeholder="https://example.com/avatar.jpg"
           value={imageUrl}
           onChange={(e) => setImageUrl(e.target.value)}
         />
+        <p className="text-xs text-muted-foreground">
+          Dán đường dẫn ảnh trực tiếp (.jpg, .png, .webp). Hỗ trợ upload file sẽ có sau.
+        </p>
       </div>
 
       <div className="space-y-2">

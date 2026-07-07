@@ -150,6 +150,15 @@ export function MemberCard({
             <p className="text-xs text-muted-foreground truncate" title={member.email}>
               {member.email}
             </p>
+            <span
+              className={cn(
+                "mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                ROLE_BADGE_CLASS[member.role]
+              )}
+            >
+              <RoleIcon role={member.role} className="size-2.5" />
+              {ROLE_LABEL[member.role]}
+            </span>
           </div>
         </div>
         <DropdownMenu>
@@ -209,16 +218,7 @@ export function MemberCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </CardHeader>
-      <CardContent className="px-5 pb-5 pt-3 flex items-center justify-between gap-2">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
-            ROLE_BADGE_CLASS[member.role]
-          )}
-        >
-          <RoleIcon role={member.role} className="size-3" />
-          {ROLE_LABEL[member.role]}
-        </span>
+      <CardContent className="px-5 pb-5 pt-3 flex items-center justify-end gap-2">
         <span className="text-xs text-muted-foreground">
           Tham gia {format(new Date(member.joinedAt), "dd/MM/yyyy")}
         </span>

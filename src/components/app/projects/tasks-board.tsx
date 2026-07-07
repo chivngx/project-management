@@ -129,8 +129,15 @@ function Column({
           {loading ? (
             Array.from({ length: 2 }).map((_, i) => <TaskCardSkeleton key={i} />)
           ) : items.length === 0 ? (
-            <div className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">
-              Chưa có tác vụ
+            <div
+              className={cn(
+                "rounded-lg border border-dashed py-8 text-center text-xs transition-colors",
+                isOver
+                  ? "border-primary/50 bg-primary/5 text-primary"
+                  : "text-muted-foreground"
+              )}
+            >
+              {isOver ? "Thả tác vụ vào đây" : "Kéo thả tác vụ vào đây"}
             </div>
           ) : (
             items.map((t) => (
