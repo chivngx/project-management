@@ -18,7 +18,6 @@ import {
 import { useTheme } from "next-themes";
 import { signOut } from "next-auth/react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 
 export function CommandPalette() {
   const router = useRouter();

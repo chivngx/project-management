@@ -4,8 +4,6 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
 
-const BCRYPT_COST = 12;
-
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",

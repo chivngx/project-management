@@ -70,6 +70,7 @@ import type {
   ProjectDetail,
   Task,
 } from "@/components/app/projects/types";
+import { useRealtime } from "@/hooks/use-realtime";
 
 // Neutral palette matching the dashboard (no indigo/blue).
 const STATUS_COLORS: Record<string, string> = {
@@ -98,6 +99,24 @@ export default function ProjectDetailsPage() {
     queryFn: () => apiFetch(`/api/projects/${id}`),
     enabled: !!id,
   });
+
+  // Realtime: listen for task/project changes from other workspace members
+  // and refetch the project so the board stays in sync.
+  const socket = useRealtime(project?.workspaceId);
+  React.useEffect(() => {
+    if (!socket) return;
+    const onTaskUpdated = (payload: { projectId?: string }) => {
+      if (!payload || payload.projectId !== id) return;
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+    };
+    const onTaskDeleted = onTaskUpdated;
+    socket.on("task:updated", onTaskUpdated);
+    socket.on("task:deleted", onTaskDeleted);
+    return () => {
+      socket.off("task:updated", onTaskUpdated);
+      socket.off("task:deleted", onTaskDeleted);
+    };
+  }, [socket, id, queryClient]);
 
   const [deleting, setDeleting] = React.useState(false);
 

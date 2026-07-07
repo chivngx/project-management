@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      # In production, set a real secret: `openssl rand -base64 32`.
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      DATABASE_URL: file:/app/db/custom.db
+    volumes:
+      # Persist the SQLite DB across container restarts.
+      - app-db:/app/db
+    restart: unless-stopped
+
+volumes:
+  app-db:

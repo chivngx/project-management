@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -32,7 +33,7 @@ export default function AppError({
           <RotateCcw className="mr-2 h-4 w-4" /> Thử lại
         </Button>
         <Button asChild variant="outline">
-          <a href="/">Về trang chủ</a>
+          <Link href="/">Về trang chủ</Link>
         </Button>
       </div>
     </div>

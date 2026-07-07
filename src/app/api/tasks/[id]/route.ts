@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getApiContext, canAdmin, forbidden } from "@/lib/api-context";
+import { emitToWorkspace } from "@/lib/realtime";
 import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
 
 type Params = { params: Promise<{ id: string }> };
@@ -106,6 +107,13 @@ export async function PATCH(req: Request, { params }: Params) {
       },
     });
   }
+
+  // Broadcast the change to other workspace members in realtime.
+  await emitToWorkspace(workspace.id, "task:updated", {
+    id: updated.id,
+    projectId: task.projectId,
+    changes: parsed.data,
+  });
 
   return NextResponse.json({ id: updated.id });
 }

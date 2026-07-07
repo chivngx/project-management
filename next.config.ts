@@ -2,10 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  eslint: {
-    // Lint is run separately via `bun run lint`; don't block dev/build on it.
-    ignoreDuringBuilds: true,
-  },
+  // Produce a self-contained .next/standalone build for Docker.
+  output: "standalone",
   typescript: {
     ignoreBuildErrors: false,
   },
