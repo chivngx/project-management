@@ -46,7 +46,9 @@ export function AppSidebar({
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Menu</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+            Menu
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {nav.map((item) => {
@@ -56,9 +58,24 @@ export function AppSidebar({
                     : pathname.startsWith(item.href);
                 return (
                   <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild isActive={active}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={active}
+                      className="relative h-9 gap-2.5 rounded-lg px-3 text-sm font-medium transition-all duration-150"
+                    >
                       <Link href={item.href}>
-                        <item.icon className="h-4 w-4" />
+                        {/* Active indicator bar */}
+                        {active && (
+                          <span
+                            aria-hidden
+                            className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-foreground opacity-70"
+                          />
+                        )}
+                        <item.icon
+                          className={`h-4 w-4 shrink-0 transition-colors ${
+                            active ? "text-foreground" : "text-muted-foreground"
+                          }`}
+                        />
                         <span>{item.label}</span>
                       </Link>
                     </SidebarMenuButton>
@@ -71,6 +88,7 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="p-2">
+        <div className="mb-1 h-px bg-border/60" />
         <UserMenu user={user} />
       </SidebarFooter>
     </Sidebar>

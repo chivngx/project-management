@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { format, isPast, isValid } from "date-fns";
 import { vi } from "date-fns/locale";
-import { CalendarClock, CheckCircle2, ListTodo } from "lucide-react";
+import { CalendarClock, CheckCircle2, ListTodo, ExternalLink } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -37,6 +37,14 @@ interface MyTasksListProps {
   loading?: boolean;
 }
 
+// Priority dot colors matching the badge palette
+const PRIORITY_DOT: Record<string, string> = {
+  LOW:      "bg-zinc-400 dark:bg-zinc-500",
+  MEDIUM:   "bg-sky-500",
+  HIGH:     "bg-orange-500",
+  CRITICAL: "bg-red-500",
+};
+
 function TaskRow({ task }: { task: MyTask }) {
   const due = task.dueDate ? new Date(task.dueDate) : null;
   const dueValid = due && isValid(due);
@@ -45,13 +53,23 @@ function TaskRow({ task }: { task: MyTask }) {
   return (
     <Link
       href={`/projects/${task.projectId}`}
-      className="flex items-start gap-3 rounded-lg p-2.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group flex items-start gap-3 rounded-lg p-2.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+      {/* Status icon + priority dot */}
+      <div className="relative mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
         <CheckCircle2 className="size-3.5" />
-      </span>
+        {/* Priority dot */}
+        <span
+          className={cn(
+            "absolute -right-0.5 -top-0.5 size-2 rounded-full border-2 border-background",
+            PRIORITY_DOT[task.priority] ?? PRIORITY_DOT.MEDIUM
+          )}
+          aria-hidden
+        />
+      </div>
+
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium leading-snug">
+        <p className="truncate text-sm font-medium leading-snug group-hover:text-foreground">
           {task.title}
         </p>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -66,14 +84,6 @@ function TaskRow({ task }: { task: MyTask }) {
           >
             {TASK_STATUS_LABEL[task.status] ?? task.status}
           </span>
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-              PRIORITY_BADGE[task.priority] ?? PRIORITY_BADGE.MEDIUM
-            )}
-          >
-            {PRIORITY_LABEL[task.priority] ?? task.priority}
-          </span>
           {dueValid && (
             <span
               className={cn(
@@ -85,10 +95,13 @@ function TaskRow({ task }: { task: MyTask }) {
             >
               <CalendarClock className="size-3" />
               {format(due, "dd/MM", { locale: vi })}
+              {overdue && " · Quá hạn"}
             </span>
           )}
         </div>
       </div>
+
+      <ExternalLink className="mt-1 size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-60" />
     </Link>
   );
 }
@@ -102,7 +115,6 @@ function TaskSkeleton() {
         <Skeleton className="h-3 w-1/2" />
         <div className="flex gap-1.5">
           <Skeleton className="h-4 w-16 rounded-full" />
-          <Skeleton className="h-4 w-12 rounded-full" />
         </div>
       </div>
     </div>
@@ -113,21 +125,16 @@ export function MyTasksList({ tasks, loading = false }: MyTasksListProps) {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-        <div className="space-y-1">
-          <CardTitle>Tác vụ của tôi</CardTitle>
-          <CardDescription>
+        <div className="space-y-0.5">
+          <CardTitle className="text-sm font-semibold">Tác vụ của tôi</CardTitle>
+          <CardDescription className="text-xs">
             {loading
               ? "Đang tải…"
               : `${tasks.length} tác vụ đang được giao cho bạn`}
           </CardDescription>
         </div>
-        <Button
-          asChild
-          variant="ghost"
-          size="sm"
-          className="shrink-0"
-        >
-          <Link href="/projects">Xem tất cả</Link>
+        <Button asChild variant="ghost" size="sm" className="shrink-0 text-xs">
+          <Link href="/my-tasks">Xem tất cả</Link>
         </Button>
       </CardHeader>
       <CardContent className="p-2">

@@ -31,17 +31,17 @@ function Stat({
   accent: string;
 }) {
   return (
-    <Card className="gap-0 py-4 px-4 flex-row items-center gap-3">
+    <Card className="card-lift flex-row items-center gap-3 py-4 px-4">
       <span
         className={cn(
-          "flex size-9 items-center justify-center rounded-lg shrink-0",
+          "flex size-10 items-center justify-center rounded-xl shrink-0 shadow-sm",
           accent
         )}
       >
         <Icon className="size-4" />
       </span>
       <div className="min-w-0">
-        <p className="text-xl font-semibold leading-tight">{value}</p>
+        <p className="text-2xl font-bold leading-tight tabular-nums">{value}</p>
         <p className="text-xs text-muted-foreground truncate">{label}</p>
       </div>
     </Card>
@@ -50,18 +50,18 @@ function Stat({
 
 function EmptyState({ onInvite }: { onInvite: () => void }) {
   return (
-    <Card className="py-12 px-6 flex flex-col items-center justify-center text-center gap-3 border-dashed">
-      <span className="flex size-12 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
-        <Users className="size-6" />
+    <Card className="py-16 px-6 flex flex-col items-center justify-center text-center gap-4 border-dashed animate-fade-in">
+      <span className="flex size-14 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
+        <Users className="size-7" />
       </span>
-      <div className="space-y-1">
-        <p className="font-medium text-sm">Chưa có thành viên nào</p>
+      <div className="space-y-1.5">
+        <p className="font-semibold text-sm">Chưa có thành viên nào</p>
         <p className="text-xs text-muted-foreground max-w-sm">
           Mời thành viên đã đăng ký tài khoản để cùng làm việc trong workspace
           này.
         </p>
       </div>
-      <Button onClick={onInvite}>
+      <Button onClick={onInvite} className="gap-1.5">
         <UserPlus className="size-4" />
         Mời thành viên
       </Button>
@@ -84,7 +84,6 @@ export default function TeamPage() {
   });
 
   const members = React.useMemo(() => data ?? [], [data]);
-  // Infer the current user's role from the team list.
   const currentUserRole = React.useMemo(
     () => members.find((m) => m.id === me?.id)?.role,
     [members, me?.id]
@@ -95,11 +94,7 @@ export default function TeamPage() {
       (m) => m.role === "OWNER" || m.role === "ADMIN"
     ).length;
     const membersCount = members.filter((m) => m.role === "MEMBER").length;
-    return {
-      total: members.length,
-      ownersAdmins,
-      members: membersCount,
-    };
+    return { total: members.length, ownersAdmins, members: membersCount };
   }, [members]);
 
   const filtered = React.useMemo(() => {
@@ -112,7 +107,8 @@ export default function TeamPage() {
   }, [members, query]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 animate-fade-up">
+      {/* Header */}
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Đội nhóm</h1>
@@ -123,9 +119,10 @@ export default function TeamPage() {
         <InviteMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} />
       </header>
 
+      {/* Stats */}
       <section
         aria-label="Thống kê"
-        className="grid grid-cols-1 gap-3 sm:grid-cols-3"
+        className="stagger grid grid-cols-1 gap-3 sm:grid-cols-3"
       >
         <Stat
           icon={Users}
@@ -147,14 +144,16 @@ export default function TeamPage() {
         />
       </section>
 
-      <section aria-label="Danh sách thành viên" className="space-y-3">
+      {/* Member list */}
+      <section aria-label="Danh sách thành viên" className="space-y-4">
+        {/* Search */}
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Tìm theo tên hoặc email…"
-            className="pl-9"
+            className="pl-9 transition-shadow focus:shadow-sm"
             aria-label="Tìm kiếm thành viên"
           />
         </div>
@@ -165,7 +164,7 @@ export default function TeamPage() {
             {error instanceof Error ? ` ${error.message}` : ""}
           </Card>
         ) : isLoading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 max-h-[28rem] overflow-y-auto thin-scroll pr-1">
+          <div className="stagger grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <MemberCardSkeleton key={i} />
             ))}
@@ -174,10 +173,10 @@ export default function TeamPage() {
           <EmptyState onInvite={() => setInviteOpen(true)} />
         ) : filtered.length === 0 ? (
           <Card className="py-10 px-6 text-center text-sm text-muted-foreground">
-            Không tìm thấy thành viên phù hợp với “{query}”.
+            Không tìm thấy thành viên phù hợp với &ldquo;{query}&rdquo;.
           </Card>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 max-h-[28rem] overflow-y-auto thin-scroll pr-1">
+          <div className="stagger grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {filtered.map((m) => (
               <MemberCard
                 key={m.id}

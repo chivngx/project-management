@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FolderKanban, Plus, Search } from "lucide-react";
+import { FolderKanban, Plus, Search, SlidersHorizontal } from "lucide-react";
 
 import { apiFetch } from "@/lib/api-fetch";
 import { Button } from "@/components/ui/button";
@@ -68,9 +68,10 @@ export default function ProjectsPage() {
   }, [projects, search, status, priority]);
 
   const total = projects?.length ?? 0;
+  const hasFilters = search !== "" || status !== "ALL" || priority !== "ALL";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 animate-fade-up">
       {/* Header */}
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
@@ -88,7 +89,7 @@ export default function ProjectsPage() {
         <Button
           onClick={() => setCreateOpen(true)}
           size="sm"
-          className="shrink-0"
+          className="shrink-0 gap-1.5"
         >
           <Plus className="size-4" />
           Dự án mới
@@ -96,48 +97,70 @@ export default function ProjectsPage() {
       </header>
 
       {/* Toolbar */}
-      <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-        <div className="relative">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        {/* Search */}
+        <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Tìm theo tên hoặc mô tả…"
-            className="pl-9"
+            className="pl-9 transition-shadow focus:shadow-sm"
             aria-label="Tìm kiếm dự án"
           />
         </div>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Trạng thái" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
-            {PROJECT_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {PROJECT_STATUS_LABEL[s]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={priority} onValueChange={setPriority}>
-          <SelectTrigger className="w-full sm:w-[160px]">
-            <SelectValue placeholder="Ưu tiên" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Tất cả ưu tiên</SelectItem>
-            {PROJECT_PRIORITIES.map((p) => (
-              <SelectItem key={p} value={p}>
-                {PRIORITY_LABEL[p]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+
+        {/* Filters */}
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="w-full sm:w-[170px]">
+              <SelectValue placeholder="Trạng thái" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
+              {PROJECT_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {PROJECT_STATUS_LABEL[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={priority} onValueChange={setPriority}>
+            <SelectTrigger className="w-full sm:w-[150px]">
+              <SelectValue placeholder="Ưu tiên" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Tất cả ưu tiên</SelectItem>
+              {PROJECT_PRIORITIES.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {PRIORITY_LABEL[p]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Clear filters */}
+          {hasFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setSearch("");
+                setStatus("ALL");
+                setPriority("ALL");
+              }}
+            >
+              Xóa lọc
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Content */}
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <ProjectCardSkeleton key={i} />
           ))}
@@ -153,7 +176,7 @@ export default function ProjectsPage() {
           }}
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((p) => (
             <ProjectCard
               key={p.id}
@@ -178,15 +201,13 @@ interface EmptyStateProps {
 
 function EmptyState({ hasProjects, onCreate, onReset }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-16 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-muted">
-        <FolderKanban className="size-6 text-muted-foreground" />
+    <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed py-20 text-center animate-fade-in">
+      <div className="flex size-14 items-center justify-center rounded-full bg-muted">
+        <FolderKanban className="size-7 text-muted-foreground" />
       </div>
-      <div className="space-y-1">
-        <p className="text-sm font-medium">
-          {hasProjects
-            ? "Không tìm thấy dự án phù hợp"
-            : "Chưa có dự án nào"}
+      <div className="space-y-1.5">
+        <p className="text-sm font-semibold">
+          {hasProjects ? "Không tìm thấy dự án phù hợp" : "Chưa có dự án nào"}
         </p>
         <p className="max-w-sm text-xs text-muted-foreground">
           {hasProjects
@@ -199,7 +220,7 @@ function EmptyState({ hasProjects, onCreate, onReset }: EmptyStateProps) {
           Xoá bộ lọc
         </Button>
       ) : (
-        <Button size="sm" onClick={onCreate}>
+        <Button size="sm" onClick={onCreate} className="gap-1.5">
           <Plus className="size-4" />
           Tạo dự án đầu tiên
         </Button>

@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
 
 export interface Activity {
   id: string;
@@ -42,21 +41,26 @@ function ActivityRow({ activity }: { activity: Activity }) {
   const valid = isValid(created);
 
   return (
-    <li className="flex items-start gap-3 px-1 py-2.5">
-      <Avatar size="sm" className="mt-0.5">
+    <li className="group relative flex items-start gap-3 py-2.5 px-1">
+      {/* Avatar */}
+      <Avatar size="sm" className="mt-0.5 shrink-0 ring-2 ring-background">
         {activity.userImage ? (
           <AvatarImage src={activity.userImage} alt={activity.userName ?? ""} />
         ) : null}
-        <AvatarFallback className="text-[10px] font-medium">
+        <AvatarFallback className="text-[10px] font-semibold">
           {initialsFromName(activity.userName)}
         </AvatarFallback>
       </Avatar>
+
+      {/* Content */}
       <div className="min-w-0 flex-1">
         <p className="text-sm leading-snug text-foreground">
           {activity.message}
         </p>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
-          {activity.userName ?? "Hệ thống"}
+          <span className="font-medium text-foreground/70">
+            {activity.userName ?? "Hệ thống"}
+          </span>
           {valid && (
             <>
               {" · "}
@@ -72,7 +76,7 @@ function ActivityRow({ activity }: { activity: Activity }) {
 function ActivitySkeleton() {
   return (
     <li className="flex items-start gap-3 px-1 py-2.5">
-      <Skeleton className="size-6 rounded-full" />
+      <Skeleton className="mt-0.5 size-6 shrink-0 rounded-full" />
       <div className="flex-1 space-y-1.5">
         <Skeleton className="h-3 w-full" />
         <Skeleton className="h-3 w-2/3" />
@@ -89,14 +93,14 @@ export function RecentActivity({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Hoạt động gần đây</CardTitle>
-        <CardDescription>
+        <CardTitle className="text-sm font-semibold">Hoạt động gần đây</CardTitle>
+        <CardDescription className="text-xs">
           Cập nhật mới nhất từ workspace của bạn
         </CardDescription>
       </CardHeader>
       <CardContent className="p-2">
         {loading ? (
-          <ul className="space-y-1">
+          <ul className="space-y-0.5">
             {Array.from({ length: 5 }).map((_, i) => (
               <ActivitySkeleton key={i} />
             ))}
@@ -112,11 +116,7 @@ export function RecentActivity({
             </p>
           </div>
         ) : (
-          <ul
-            className={cn(
-              "max-h-96 space-y-0.5 overflow-y-auto thin-scroll"
-            )}
-          >
+          <ul className="timeline-list max-h-96 overflow-y-auto thin-scroll">
             {activities.map((a) => (
               <ActivityRow key={a.id} activity={a} />
             ))}

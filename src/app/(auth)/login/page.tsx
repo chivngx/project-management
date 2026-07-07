@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Loader2, Layers } from "lucide-react";
+import { Loader2, Layers, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,7 @@ export default function LoginPage() {
   const [loading, setLoading] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
   async function onSubmit(e: React.FormEvent) {
@@ -44,7 +45,7 @@ export default function LoginPage() {
         redirect: false,
       });
       if (!res || res.error) {
-        throw new Error(res?.error ?? "Đăng nhập thất bại");
+        throw new Error(res?.error ?? "Email hoặc mật khẩu không đúng");
       }
       toast.success("Đăng nhập thành công");
       router.replace("/");
@@ -57,20 +58,25 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
+      {/* Header */}
       <div className="space-y-2 text-center">
-        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground lg:hidden">
+        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm lg:hidden">
           <Layers className="h-5 w-5" />
         </div>
-        <h1 className="text-2xl font-bold">Đăng nhập</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Đăng nhập</h1>
         <p className="text-sm text-muted-foreground">
           Chào mừng trở lại! Đăng nhập để tiếp tục.
         </p>
       </div>
 
+      {/* Form */}
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+        {/* Email */}
+        <div className="space-y-1.5">
+          <Label htmlFor="email" className="text-sm font-medium">
+            Email
+          </Label>
           <Input
             id="email"
             type="email"
@@ -84,6 +90,7 @@ export default function LoginPage() {
             autoComplete="email"
             aria-invalid={!!errors.email}
             aria-describedby={errors.email ? "email-error" : undefined}
+            className="transition-shadow focus:shadow-sm"
           />
           {errors.email && (
             <p id="email-error" className="text-xs text-destructive">
@@ -91,46 +98,87 @@ export default function LoginPage() {
             </p>
           )}
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="password">Mật khẩu</Label>
-          <Input
-            id="password"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              if (errors.password) setErrors((p) => ({ ...p, password: "" }));
-            }}
-            required
-            autoComplete="current-password"
-            aria-invalid={!!errors.password}
-            aria-describedby={errors.password ? "password-error" : undefined}
-          />
+
+        {/* Password */}
+        <div className="space-y-1.5">
+          <Label htmlFor="password" className="text-sm font-medium">
+            Mật khẩu
+          </Label>
+          <div className="relative">
+            <Input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (errors.password) setErrors((p) => ({ ...p, password: "" }));
+              }}
+              required
+              autoComplete="current-password"
+              aria-invalid={!!errors.password}
+              aria-describedby={errors.password ? "password-error" : undefined}
+              className="pr-10 transition-shadow focus:shadow-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+            >
+              {showPassword ? (
+                <EyeOff className="size-4" />
+              ) : (
+                <Eye className="size-4" />
+              )}
+            </button>
+          </div>
           {errors.password && (
             <p id="password-error" className="text-xs text-destructive">
               {errors.password}
             </p>
           )}
         </div>
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Đăng nhập
+
+        <Button
+          type="submit"
+          className="w-full gap-2"
+          disabled={loading}
+          size="default"
+        >
+          {loading && <Loader2 className="size-4 animate-spin" />}
+          {loading ? "Đang đăng nhập…" : "Đăng nhập"}
         </Button>
       </form>
 
+      {/* Demo credentials */}
       {process.env.NODE_ENV === "development" && (
-        <div className="rounded-md border border-dashed bg-muted/40 p-3 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground">Tài khoản demo:</p>
-          <p className="mt-1">
-            Email: <code className="font-mono">alex@example.com</code>
+        <div className="rounded-lg border border-dashed bg-muted/40 p-4 text-xs text-muted-foreground space-y-1">
+          <p className="font-semibold text-foreground">🔑 Tài khoản demo:</p>
+          <p>
+            Email:{" "}
+            <button
+              type="button"
+              className="font-mono text-foreground hover:underline"
+              onClick={() => setEmail("alex@example.com")}
+            >
+              alex@example.com
+            </button>
           </p>
           <p>
-            Mật khẩu: <code className="font-mono">password123</code>
+            Mật khẩu:{" "}
+            <button
+              type="button"
+              className="font-mono text-foreground hover:underline"
+              onClick={() => setPassword("password123")}
+            >
+              password123
+            </button>
           </p>
         </div>
       )}
 
+      {/* Register link */}
       <div className="text-center text-sm text-muted-foreground">
         Chưa có tài khoản?{" "}
         <Link

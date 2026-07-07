@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   ListTodo,
   Plus,
+  Sparkles,
 } from "lucide-react";
 
 import { apiFetch } from "@/lib/api-fetch";
@@ -70,6 +71,13 @@ interface ActivityItem {
   userImage: string | null;
 }
 
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Chào buổi sáng";
+  if (h < 18) return "Chào buổi chiều";
+  return "Chào buổi tối";
+}
+
 export default function DashboardPage() {
   const { data: me } = useQuery<MeResponse>({
     queryKey: ["me"],
@@ -100,25 +108,29 @@ export default function DashboardPage() {
   const firstName = me?.name?.split(" ")[0] ?? me?.name ?? "";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 animate-fade-up">
       {/* Page header */}
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            {me ? (
-              <>
-                Chào mừng trở lại,{" "}
-                <span className="text-foreground">{firstName}</span>
-              </>
-            ) : (
-              <Skeleton className="h-7 w-56" />
-            )}
-          </h1>
+          <div className="flex items-center gap-2">
+            <Sparkles className="size-5 text-amber-500" aria-hidden />
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+              {me ? (
+                <>
+                  {getGreeting()},{" "}
+                  <span className="font-bold">{firstName}</span>
+                  <span className="text-muted-foreground">.</span>
+                </>
+              ) : (
+                <Skeleton className="inline-block h-7 w-56 align-middle" />
+              )}
+            </h1>
+          </div>
           <p className="text-sm text-muted-foreground">
             Theo dõi tiến độ dự án và tác vụ của bạn trong một nơi.
           </p>
         </div>
-        <Button asChild size="sm" className="shrink-0">
+        <Button asChild size="sm" className="shrink-0 gap-1.5">
           <Link href="/projects">
             <Plus className="size-4" />
             Dự án mới
@@ -126,10 +138,10 @@ export default function DashboardPage() {
         </Button>
       </header>
 
-      {/* Stat cards */}
+      {/* Stat cards — staggered fade-up */}
       <section
         aria-label="Tổng quan"
-        className="grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4"
+        className="stagger grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4"
       >
         <StatCard
           label="Tổng dự án"
@@ -154,14 +166,14 @@ export default function DashboardPage() {
           loading={statsLoading && !totals}
         />
         <StatCard
-          label="Tác vụ đã hoàn thành"
+          label="Tác vụ hoàn thành"
           icon={ListTodo}
           tone="violet"
           value={
             totals ? (
               <>
                 <span className="tabular-nums">{totals.doneTasks}</span>
-                <span className="text-base font-normal text-muted-foreground">
+                <span className="text-lg font-normal text-muted-foreground">
                   /{totals.tasks}
                 </span>
               </>

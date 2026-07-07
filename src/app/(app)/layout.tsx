@@ -16,14 +16,15 @@ export default async function AppLayout({
   const user = await requireUser();
   const { workspace, workspaces } = await getActiveWorkspace(user.id);
 
-  // Edge case: user has no workspace at all (shouldn't normally happen since
-  // register creates one). Show a friendly prompt.
   if (!workspace) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
-        <div className="max-w-md text-center">
+        <div className="max-w-md text-center space-y-2">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
+            <span className="text-2xl">🏗️</span>
+          </div>
           <h1 className="text-xl font-semibold">Chưa có workspace</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Vui lòng đăng xuất và đăng ký lại, hoặc liên hệ quản trị viên.
           </p>
         </div>
@@ -44,9 +45,10 @@ export default async function AppLayout({
         workspaces={workspaces}
       />
       <SidebarInset>
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
-          <SidebarTrigger />
-          <Separator orientation="vertical" className="h-5" />
+        {/* Sticky topbar with glassmorphism */}
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border/60 bg-background/80 px-4 backdrop-blur-md backdrop-saturate-150">
+          <SidebarTrigger className="text-muted-foreground hover:text-foreground transition-colors" />
+          <Separator orientation="vertical" className="h-5 opacity-50" />
           <GlobalSearch />
           <div className="flex-1" />
           <NotificationBell />

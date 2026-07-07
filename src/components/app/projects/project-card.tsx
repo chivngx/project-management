@@ -48,6 +48,14 @@ interface ProjectCardProps {
   deleting?: boolean;
 }
 
+// Priority left-strip colors
+const PRIORITY_STRIP: Record<string, string> = {
+  LOW:      "bg-zinc-300 dark:bg-zinc-600",
+  MEDIUM:   "bg-sky-400",
+  HIGH:     "bg-orange-400",
+  CRITICAL: "bg-red-500",
+};
+
 export function ProjectCard({
   project,
   onDelete,
@@ -62,26 +70,21 @@ export function ProjectCard({
   const visibleMembers = project.members.slice(0, 4);
   const extraMembers = Math.max(0, project.memberCount - visibleMembers.length);
 
-  // Priority color strip on the left edge (like Linear/Jira) so priority is
-  // scannable at a glance without reading the badge.
-  const PRIORITY_STRIP: Record<string, string> = {
-    LOW: "bg-zinc-300 dark:bg-zinc-600",
-    MEDIUM: "bg-sky-400",
-    HIGH: "bg-orange-400",
-    CRITICAL: "bg-red-500",
-  };
+  // Progress %
+  const progress =
+    project.taskCount > 0
+      ? Math.round(((project.doneCount ?? 0) / project.taskCount) * 100)
+      : 0;
 
   return (
-    <Card className="group relative gap-0 overflow-hidden py-0 transition-all hover:border-foreground/20 hover:shadow-md">
+    <Card className="card-lift group relative gap-0 overflow-hidden py-0">
       {/* Priority color strip */}
       <div
-        className={cn(
-          "absolute inset-y-0 left-0 w-1",
-          PRIORITY_STRIP[project.priority] ?? PRIORITY_STRIP.MEDIUM
-        )}
+        className={cn("absolute inset-y-0 left-0 w-1", PRIORITY_STRIP[project.priority] ?? PRIORITY_STRIP.MEDIUM)}
         aria-hidden
       />
-      <CardHeader className="gap-2 p-4 pb-0">
+
+      <CardHeader className="gap-2 p-4 pb-0 pl-5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1 space-y-2">
             <CardTitle className="text-base leading-snug">
@@ -116,7 +119,7 @@ export function ProjectCard({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="-mr-1 -mt-1 shrink-0 text-muted-foreground"
+                className="-mr-1 -mt-1 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
                 aria-label="Hành động"
               >
                 <MoreVertical className="size-4" />
@@ -142,19 +145,36 @@ export function ProjectCard({
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 p-4 pt-3">
+      <CardContent className="flex-1 p-4 pl-5 pt-3">
         <p className="line-clamp-2 min-h-[2.5rem] text-sm text-muted-foreground">
           {project.description || "Chưa có mô tả cho dự án này."}
         </p>
 
-        <div className="mt-4 flex items-center gap-2">
+        {/* Progress bar */}
+        {project.taskCount > 0 && (
+          <div className="mt-3">
+            <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+              <span>Tiến độ</span>
+              <span className="font-medium tabular-nums">{progress}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+              <div
+                className="h-full rounded-full bg-foreground/70 transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Members */}
+        <div className="mt-3 flex items-center gap-2">
           {visibleMembers.length > 0 ? (
             <div className="flex -space-x-2">
               {visibleMembers.map((m) => (
                 <Avatar
                   key={m.id}
                   size="sm"
-                  className="ring-2 ring-background"
+                  className="ring-2 ring-background transition-transform hover:z-10 hover:scale-110"
                   title={m.name}
                 >
                   {m.image ? <AvatarImage src={m.image} alt={m.name} /> : null}
@@ -175,7 +195,7 @@ export function ProjectCard({
         </div>
       </CardContent>
 
-      <CardFooter className="justify-between border-t bg-muted/30 p-3 text-xs text-muted-foreground">
+      <CardFooter className="justify-between border-t bg-muted/30 p-3 pl-5 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <ListTodo className="size-3.5" />
           <span className="tabular-nums">{project.taskCount}</span> tác vụ
@@ -195,6 +215,7 @@ export function ProjectCard({
         )}
       </CardFooter>
 
+      {/* Delete confirm dialog */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -252,7 +273,10 @@ export function ProjectCardSkeleton() {
       <CardContent className="p-4 pt-3">
         <Skeleton className="h-3.5 w-full" />
         <Skeleton className="mt-1.5 h-3.5 w-4/5" />
-        <div className="mt-4 flex -space-x-2">
+        <div className="mt-3">
+          <Skeleton className="h-1.5 w-full rounded-full" />
+        </div>
+        <div className="mt-3 flex -space-x-2">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="size-6 rounded-full ring-2 ring-background" />
           ))}

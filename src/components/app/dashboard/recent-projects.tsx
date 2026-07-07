@@ -48,20 +48,22 @@ function ProjectCard({ project }: { project: RecentProject }) {
   return (
     <Link
       href={`/projects/${project.id}`}
-      className="group block rounded-xl border bg-card p-4 text-left shadow-sm transition-all hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      className="group block rounded-xl border bg-card p-4 text-left shadow-sm transition-all duration-200 hover:border-foreground/20 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
+      {/* Header row */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate font-semibold leading-tight group-hover:text-foreground">
             {project.name}
           </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {project.doneCount}/{project.taskCount} tác vụ hoàn thành
           </p>
         </div>
-        <ArrowRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+        <ArrowRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5" />
       </div>
 
+      {/* Badges */}
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         <span
           className={cn(
@@ -81,14 +83,21 @@ function ProjectCard({ project }: { project: RecentProject }) {
         </span>
       </div>
 
+      {/* Progress */}
       <div className="mt-4">
         <div className="mb-1.5 flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Tiến độ</span>
-          <span className="font-medium tabular-nums">{project.progress}%</span>
+          <span className="font-semibold tabular-nums">{project.progress}%</span>
         </div>
-        <Progress value={project.progress} className="h-1.5" />
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+          <div
+            className="h-full rounded-full bg-foreground/80 transition-all duration-500"
+            style={{ width: `${project.progress}%` }}
+          />
+        </div>
       </div>
 
+      {/* Footer meta */}
       <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <Users className="size-3.5" />
@@ -125,7 +134,11 @@ function ProjectCardSkeleton() {
         <Skeleton className="h-5 w-12 rounded-full" />
       </div>
       <div className="mt-4">
-        <Skeleton className="h-3 w-full" />
+        <div className="mb-1.5 flex justify-between">
+          <Skeleton className="h-3 w-12" />
+          <Skeleton className="h-3 w-8" />
+        </div>
+        <Skeleton className="h-1.5 w-full rounded-full" />
       </div>
       <div className="mt-4 flex justify-between">
         <Skeleton className="h-3 w-20" />
@@ -139,15 +152,15 @@ export function RecentProjects({ projects, loading = false }: RecentProjectsProp
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-        <div className="space-y-1">
-          <CardTitle>Tổng quan dự án</CardTitle>
-          <CardDescription>
+        <div className="space-y-0.5">
+          <CardTitle className="text-sm font-semibold">Tổng quan dự án</CardTitle>
+          <CardDescription className="text-xs">
             {loading
               ? "Đang tải dự án…"
               : `${projects.length} dự án gần nhất trong workspace`}
           </CardDescription>
         </div>
-        <Button asChild variant="ghost" size="sm" className="shrink-0">
+        <Button asChild variant="ghost" size="sm" className="shrink-0 text-xs">
           <Link href="/projects">
             Xem tất cả
             <ArrowRight className="size-3.5" />
@@ -173,9 +186,7 @@ export function RecentProjects({ projects, loading = false }: RecentProjectsProp
               </p>
             </div>
             <Button asChild size="sm">
-              <Link href="/projects">
-                Tạo dự án mới
-              </Link>
+              <Link href="/projects">Tạo dự án mới</Link>
             </Button>
           </div>
         ) : (

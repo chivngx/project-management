@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { format } from "date-fns";
-import { Mail, MoreVertical, Crown, Shield, User as UserIcon, Trash2, UserCog } from "lucide-react";
+import { Mail, MoreVertical, Crown, Shield, User as UserIcon, Trash2, UserCog, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -49,14 +49,14 @@ export interface TeamMember {
 }
 
 const ROLE_BADGE_CLASS: Record<TeamRole, string> = {
-  OWNER: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-  ADMIN: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  OWNER:  "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+  ADMIN:  "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
   MEMBER: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
 };
 
 const ROLE_LABEL: Record<TeamRole, string> = {
-  OWNER: "Owner",
-  ADMIN: "Admin",
+  OWNER:  "Owner",
+  ADMIN:  "Admin",
   MEMBER: "Thành viên",
 };
 
@@ -89,11 +89,10 @@ export function MemberCard({
   const isSelf = member.id === currentUserId;
   const isOwner = currentUserRole === "OWNER";
   const isTargetOwner = member.role === "OWNER";
-  // Can manage: OWNER can change anyone (except owner role of self);
-  // a user can always "leave" (remove self) via the dropdown.
   const canChangeRole = isOwner && !isTargetOwner && !isSelf;
   const canRemove =
-    (!isTargetOwner) && (isSelf || currentUserRole === "OWNER" || currentUserRole === "ADMIN");
+    !isTargetOwner &&
+    (isSelf || currentUserRole === "OWNER" || currentUserRole === "ADMIN");
 
   const [removeOpen, setRemoveOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -129,22 +128,49 @@ export function MemberCard({
   }
 
   return (
-    <Card className="gap-0 py-0 overflow-hidden">
+    <Card className="card-lift group gap-0 py-0 overflow-hidden">
       <CardHeader className="pb-3 pt-5 px-5 flex-row items-start justify-between gap-2 space-y-0">
         <div className="flex items-center gap-3 min-w-0">
-          <Avatar size="lg" className="ring-1 ring-border">
-            {member.image ? (
-              <AvatarImage src={member.image} alt={displayName} />
-            ) : null}
-            <AvatarFallback className="bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 font-medium">
-              {getInitials(member.name)}
-            </AvatarFallback>
-          </Avatar>
+          {/* Avatar with role-colored ring */}
+          <div className="relative shrink-0">
+            <Avatar
+              size="lg"
+              className={cn(
+                "ring-2",
+                member.role === "OWNER"
+                  ? "ring-emerald-400/60 dark:ring-emerald-500/40"
+                  : member.role === "ADMIN"
+                  ? "ring-amber-400/60 dark:ring-amber-500/40"
+                  : "ring-border"
+              )}
+            >
+              {member.image ? (
+                <AvatarImage src={member.image} alt={displayName} />
+              ) : null}
+              <AvatarFallback className="bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 font-semibold text-sm">
+                {getInitials(member.name)}
+              </AvatarFallback>
+            </Avatar>
+            {/* Role icon badge */}
+            <span
+              className={cn(
+                "absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full border-2 border-card",
+                ROLE_BADGE_CLASS[member.role]
+              )}
+              aria-hidden
+            >
+              <RoleIcon role={member.role} className="size-2.5" />
+            </span>
+          </div>
+
+          {/* Name / email */}
           <div className="min-w-0">
-            <p className="font-medium text-sm truncate" title={displayName}>
+            <p className="font-semibold text-sm truncate" title={displayName}>
               {displayName}
               {isSelf && (
-                <span className="ml-1.5 text-xs text-muted-foreground">(bạn)</span>
+                <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
+                  (bạn)
+                </span>
               )}
             </p>
             <p className="text-xs text-muted-foreground truncate" title={member.email}>
@@ -161,12 +187,14 @@ export function MemberCard({
             </span>
           </div>
         </div>
+
+        {/* Actions menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="size-8 -mr-1 -mt-1 text-muted-foreground"
+              className="size-8 -mr-1 -mt-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
               aria-label="Tùy chọn thành viên"
               disabled={busy}
             >
@@ -198,7 +226,9 @@ export function MemberCard({
                   >
                     <RoleIcon role={r} className="size-3.5" />
                     {ROLE_LABEL[r]}
-                    {member.role === r && <span className="ml-auto text-xs">✓</span>}
+                    {member.role === r && (
+                      <span className="ml-auto text-xs text-muted-foreground">✓</span>
+                    )}
                   </DropdownMenuItem>
                 ))}
               </>
@@ -218,10 +248,12 @@ export function MemberCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </CardHeader>
-      <CardContent className="px-5 pb-5 pt-3 flex items-center justify-end gap-2">
-        <span className="text-xs text-muted-foreground">
-          Tham gia {format(new Date(member.joinedAt), "dd/MM/yyyy")}
-        </span>
+
+      <CardContent className="px-5 pb-4 pt-0">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <CalendarDays className="size-3.5 shrink-0" aria-hidden />
+          <span>Tham gia {format(new Date(member.joinedAt), "dd/MM/yyyy")}</span>
+        </div>
       </CardContent>
 
       <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
@@ -233,7 +265,7 @@ export function MemberCard({
             <AlertDialogDescription>
               {isSelf
                 ? "Bạn sẽ mất quyền truy cập vào workspace này. Hành động không thể hoàn tác."
-                : `Thành viên sẽ bị xóa khỏi workspace và không còn truy cập vào các dự án chung.`}
+                : "Thành viên sẽ bị xóa khỏi workspace và không còn truy cập vào các dự án chung."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -261,13 +293,13 @@ export function MemberCardSkeleton() {
           <div className="space-y-1.5">
             <div className="h-3.5 w-28 rounded bg-muted animate-pulse" />
             <div className="h-3 w-40 rounded bg-muted animate-pulse" />
+            <div className="h-4 w-16 rounded-full bg-muted animate-pulse" />
           </div>
         </div>
         <div className="size-8 rounded-md bg-muted animate-pulse" />
       </CardHeader>
-      <CardContent className="px-5 pb-5 pt-3 flex items-center justify-between gap-2">
-        <div className="h-5 w-20 rounded-full bg-muted animate-pulse" />
-        <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+      <CardContent className="px-5 pb-4 pt-0">
+        <div className="h-3 w-32 rounded bg-muted animate-pulse" />
       </CardContent>
     </Card>
   );
