@@ -46,6 +46,12 @@ export async function GET(_req: Request, { params }: Params) {
     dueDate: project.dueDate,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
+    repoProvider: project.repoProvider,
+    repoOwner: project.repoOwner,
+    repoName: project.repoName,
+    repoToken: project.repoToken,
+    repoApiUrl: project.repoApiUrl,
+    repoWebhookSecret: project.repoWebhookSecret,
     members: project.members.map((m) => ({
       id: m.user.id,
       name: m.user.name,
@@ -79,6 +85,10 @@ export async function GET(_req: Request, { params }: Params) {
       dueDate: t.dueDate,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
+      externalId: t.externalId,
+      externalNumber: t.externalNumber,
+      externalUrl: t.externalUrl,
+      externalProvider: t.externalProvider,
     })),
     taskCount: project._count.tasks,
   });

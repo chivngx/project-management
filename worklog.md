@@ -291,3 +291,44 @@ Stage Summary:
 - Auth (login/register/logout), workspace scoping, CRUD (projects + tasks), Kanban, invite — all working.
 - Dev server stable on port 3000, served via Caddy gateway port 81.
 - Demo login: alex@example.com / password123 (or register a new account).
+
+---
+Task ID: git-integration
+Agent: Antigravity
+Task: Integrate GitHub/GitLab into ProjectFlow.
+
+Work Log:
+- Updated the Prisma schema (prisma/schema.prisma) to add git repository configuration fields to the Project model (repoProvider, repoOwner, repoName, repoToken, repoApiUrl, repoWebhookSecret) and task external issue mappings to the Task model (externalId, externalNumber, externalUrl, externalProvider).
+- Executed `npx prisma db push` to synchronize the SQLite database with the new schema and regenerate the Prisma Client.
+- Created Backend API endpoints:
+  - `/api/projects/[id]/integration` for checking, saving, and deleting repository integrations, as well as fetching real-time stats, commits, and open pull/merge requests from GitHub/GitLab.
+  - `/api/projects/[id]/integration/repos` (POST) to fetch available repositories for a given token to support autocomplete/suggestions.
+  - `/api/projects/[id]/integration/sync` to fetch unlinked repo issues and perform batch import of selected issues to tasks and status synchronization.
+- Created public Webhook endpoints at `/api/webhooks/github` and `/api/webhooks/gitlab` to handle incoming events (issue creation, closure, reopened, updates, and pull requests opened/merged) to automatically update task status and log project activity. GitHub signatures are validated using HMAC-SHA256, and GitLab hooks are validated via X-Gitlab-Token.
+- Built a premium Frontend UI integration-tab component (src/components/app/projects/integration-tab.tsx) that lets users configure the provider (GitHub/GitLab), load repositories list dynamically and select them from a dropdown autocomplete box (with manual entry toggle), view repo statistics, copy webhook instructions, browse recent commits and open PRs, and batch import unlinked issues into tasks.
+- Mounted the "Tích hợp" tab inside the project page at src/app/(app)/projects/[id]/page.tsx.
+- Modified task-card.tsx to render a small colored badge (GitHub / GitLab) for linked tasks, linking to the external source URL.
+- Added automated unit tests for signature validation, project checking, and event processing in src/app/api/webhooks/github/route.test.ts. Ran tests with 100% pass (30/30 total tests in the project) and verified clean TypeScript compilation (`npx tsc --noEmit`).
+
+Stage Summary:
+- Feature fully implemented, typed, and unit-tested successfully, including the repository dropdown autocomplete upgrade.
+
+---
+Task ID: git-integration-enterprise-upgrades
+Agent: Antigravity
+Task: Implement enterprise-grade upgrades for Git integration (OAuth 2.0, AES-256 encryption, Two-way Sync, Automated Branch, CI/CD Status, Multi-repo).
+
+Work Log:
+- Updated the Prisma schema to introduce the `GitIntegration` model, enabling multiple repository links per project, and associated `Task` directly to its git integration. Pushed DB changes via `npx prisma db push`.
+- Created the AES-256-CBC encryption module in `src/lib/encryption.ts` using Node's `crypto` library and secret key derived from `NEXTAUTH_SECRET`. Added comprehensive unit tests in `src/lib/encryption.test.ts` (passing successfully).
+- Built server-side OAuth 2.0 authorization routes for GitHub and GitLab at `/api/auth/oauth/[provider]` and callback `/api/auth/oauth/[provider]/callback`.
+- Implemented two-way synchronization in the task PATCH API: updating task status automatically closes/reopens the linked GitHub/GitLab issue and updates the issue's status labels (`status/todo`, `status/in-progress`, etc.).
+- Implemented two-way comment synchronization in the task comment POST API: posting a comment automatically comments on the corresponding external issue formatted with the commenter's name.
+- Built an automated Git branch creation API endpoint at `/api/tasks/[id]/git/branch` which generates a clean, accent-free branch name (e.g. `feature/PF-22-setup-eks-cluster`) and pushes the branch to the remote repository.
+- Reconstructed the `integration-tab.tsx` frontend to support fast connecting via OAuth, managing multiple repositories (viewing, adding, deleting specific links), and displaying CI/CD pipeline statuses (Success, Failure, Pending) on PR lists.
+- Integrated the Git branch creator section inside `edit-task-dialog.tsx` for linked tasks, providing a one-click branch creation button and a copy-to-clipboard widget.
+- Ran TypeScript compile checks (`npx tsc --noEmit`) and unit tests (`npm run test`) with zero compile errors and all 33 tests passing.
+
+Stage Summary:
+- Upgrades fully implemented, compiled, and tested successfully.
+

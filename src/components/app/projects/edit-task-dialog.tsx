@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, GitBranch, Copy, Check, ExternalLink } from "lucide-react";
 
 import { apiFetch } from "@/lib/api-fetch";
 import { Button } from "@/components/ui/button";
@@ -69,6 +69,10 @@ export function EditTaskDialog({
   const [assigneeId, setAssigneeId] = React.useState<string>(task.assigneeId ?? "__none__");
   const [dueDate, setDueDate] = React.useState(isoToDateInput(task.dueDate));
 
+  const [creatingBranch, setCreatingBranch] = React.useState(false);
+  const [createdBranchName, setCreatedBranchName] = React.useState("");
+  const [copiedBranch, setCopiedBranch] = React.useState(false);
+
   React.useEffect(() => {
     if (open) {
       setTitle(task.title);
@@ -77,6 +81,9 @@ export function EditTaskDialog({
       setPriority(task.priority);
       setAssigneeId(task.assigneeId ?? "__none__");
       setDueDate(isoToDateInput(task.dueDate));
+      setCreatedBranchName("");
+      setCopiedBranch(false);
+      setCreatingBranch(false);
     }
   }, [open, task]);
 
@@ -111,6 +118,34 @@ export function EditTaskDialog({
       assigneeId: assigneeId === "__none__" ? null : assigneeId,
       dueDate: dateInputToISO(dueDate),
     });
+  };
+
+  const handleCreateBranch = async () => {
+    setCreatingBranch(true);
+    try {
+      const res = await apiFetch<any>(`/api/tasks/${task.id}/git/branch`, {
+        method: "POST",
+      });
+      if (res.error) throw new Error(res.error);
+      setCreatedBranchName(res.branchName);
+      if (res.alreadyExists) {
+        toast.info("Nhánh Git này đã tồn tại trên repository.");
+      } else {
+        toast.success("Đã tạo nhánh Git thành công!");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Không thể tạo nhánh Git");
+    } finally {
+      setCreatingBranch(false);
+    }
+  };
+
+  const handleCopyBranchName = () => {
+    if (!createdBranchName) return;
+    navigator.clipboard.writeText(createdBranchName);
+    setCopiedBranch(true);
+    toast.success("Đã sao chép tên nhánh");
+    setTimeout(() => setCopiedBranch(false), 2000);
   };
 
   return (
@@ -225,6 +260,64 @@ export function EditTaskDialog({
                   {task.assignee.name}
                 </span>
               </span>
+            </div>
+          )}
+
+          {/* Git Integration Section */}
+          {task.externalNumber && (
+            <div className="space-y-2 rounded-md border p-3 bg-accent/20">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <GitBranch className="size-4 text-muted-foreground" />
+                  Tích hợp Git ({task.externalProvider === "github" ? "GitHub" : "GitLab"})
+                </span>
+                <a
+                  href={task.externalUrl || undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                >
+                  #{task.externalNumber}
+                  <ExternalLink className="size-3" />
+                </a>
+              </div>
+
+              {!createdBranchName ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCreateBranch}
+                  disabled={creatingBranch}
+                  className="w-full flex items-center gap-2 justify-center text-xs h-8"
+                >
+                  {creatingBranch ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <GitBranch className="size-3.5" />
+                  )}
+                  Tạo nhánh Git mới
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2 mt-1.5">
+                  <div className="flex-1 bg-background border rounded px-2 py-1 text-[11px] font-mono select-all truncate">
+                    {createdBranchName}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleCopyBranchName}
+                    className="size-7 shrink-0 border"
+                  >
+                    {copiedBranch ? (
+                      <Check className="size-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="size-3.5" />
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 

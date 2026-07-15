@@ -42,6 +42,12 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
   projectId: string;
+
+  // External reference
+  externalId?: string | null;
+  externalNumber?: number | null;
+  externalUrl?: string | null;
+  externalProvider?: string | null;
 }
 
 export interface ProjectDetail {
@@ -58,4 +64,12 @@ export interface ProjectDetail {
   members: Member[];
   tasks: Task[];
   taskCount: number;
+
+  // Integration settings
+  repoProvider?: string | null;
+  repoOwner?: string | null;
+  repoName?: string | null;
+  repoToken?: string | null;
+  repoApiUrl?: string | null;
+  repoWebhookSecret?: string | null;
 }

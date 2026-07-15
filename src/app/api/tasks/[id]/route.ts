@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getApiContext, canAdmin, forbidden } from "@/lib/api-context";
 import { emitToWorkspace } from "@/lib/realtime";
 import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
+import { decrypt } from "@/lib/encryption";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -32,7 +33,7 @@ export async function PATCH(req: Request, { params }: Params) {
   const { id } = await params;
   const task = await db.task.findFirst({
     where: { id, project: { workspaceId: workspace.id } },
-    include: { project: true },
+    include: { project: true, gitIntegration: true },
   });
   if (!task)
     return NextResponse.json({ error: "Không tìm thấy task" }, { status: 404 });
@@ -86,6 +87,69 @@ export async function PATCH(req: Request, { params }: Params) {
         : {}),
     },
   });
+
+  // TWO-WAY SYNC: If status has changed and task has Git integration, update issue state & labels
+  if (d.status !== undefined && d.status !== beforeStatus && task.externalNumber && task.gitIntegration) {
+    try {
+      const integration = task.gitIntegration;
+      const token = decrypt(integration.token);
+      const provider = integration.provider;
+      const owner = integration.owner;
+      const name = integration.name;
+      const issueNumber = task.externalNumber;
+
+      const targetGitState = d.status === "DONE" ? "closed" : "open";
+
+      if (provider === "github") {
+        const headers = {
+          Accept: "application/vnd.github.v3+json",
+          Authorization: `token ${token}`,
+          "Content-Type": "application/json",
+        };
+        
+        // 1. Sync state (open/close)
+        await fetch(`https://api.github.com/repos/${owner}/${name}/issues/${issueNumber}`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ state: targetGitState }),
+        });
+
+        // 2. Sync label (status/todo, status/in-progress, status/review, status/done)
+        const statusLabel = `status/${d.status.toLowerCase().replace("_", "-")}`;
+        await fetch(`https://api.github.com/repos/${owner}/${name}/issues/${issueNumber}/labels`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ labels: [statusLabel] }),
+        });
+      } else if (provider === "gitlab") {
+        const apiBase = integration.apiUrl || "https://gitlab.com";
+        const projectPath = encodeURIComponent(`${owner}/${name}`);
+        const headers = {
+          "PRIVATE-TOKEN": token,
+          "Content-Type": "application/json",
+        };
+
+        const targetGitlabStateEvent = d.status === "DONE" ? "close" : "reopen";
+
+        // 1. Sync state
+        await fetch(`${apiBase}/api/v4/projects/${projectPath}/issues/${issueNumber}`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ state_event: targetGitlabStateEvent }),
+        });
+
+        // 2. Sync label
+        const statusLabel = `status/${d.status.toLowerCase().replace("_", "-")}`;
+        await fetch(`${apiBase}/api/v4/projects/${projectPath}/issues/${issueNumber}`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ labels: statusLabel }),
+        });
+      }
+    } catch (e) {
+      console.error("Failed to sync task status change to Git:", e);
+    }
+  }
 
   if (d.status === "DONE" && beforeStatus !== "DONE") {
     await db.activity.create({

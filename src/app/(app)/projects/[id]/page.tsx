@@ -72,6 +72,7 @@ import { cn } from "@/lib/utils";
 import { ProjectSettingsDialog } from "@/components/app/projects/project-settings-dialog";
 import { TasksBoard } from "@/components/app/projects/tasks-board";
 import { getInitials } from "@/components/app/projects/helpers";
+import { IntegrationTab } from "@/components/app/projects/integration-tab";
 import type {
   Member,
   ProjectDetail,
@@ -301,6 +302,7 @@ export default function ProjectDetailsPage() {
               {project.members.length}
             </span>
           </TabsTrigger>
+          <TabsTrigger value="integration">Tích hợp</TabsTrigger>
         </TabsList>
 
         {/* Overview tab */}
@@ -326,6 +328,11 @@ export default function ProjectDetailsPage() {
         {/* Members tab */}
         <TabsContent value="members" className="outline-none">
           <MembersTab members={project.members} tasks={tasks} />
+        </TabsContent>
+
+        {/* Integration tab */}
+        <TabsContent value="integration" className="outline-none">
+          <IntegrationTab projectId={project.id} />
         </TabsContent>
       </Tabs>
 

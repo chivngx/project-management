@@ -170,6 +170,22 @@ export function TaskCard({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          {task.externalNumber && (
+            <a
+              href={task.externalUrl || undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                "inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold transition-colors hover:underline",
+                task.externalProvider === "github"
+                  ? "bg-[#24292e] text-white hover:bg-[#2c3238]"
+                  : "bg-[#e24329] text-white hover:bg-[#fc6d26]"
+              )}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {task.externalProvider === "github" ? "GitHub" : "GitLab"} #{task.externalNumber}
+            </a>
+          )}
           <span
             className={cn(
               "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium",

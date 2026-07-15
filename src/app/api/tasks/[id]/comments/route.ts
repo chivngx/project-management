@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getApiContext } from "@/lib/api-context";
+import { decrypt } from "@/lib/encryption";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -57,7 +58,16 @@ export async function POST(req: Request, { params }: Params) {
   const { id } = await params;
   const task = await db.task.findFirst({
     where: { id, project: { workspaceId: workspace.id } },
-    select: { id: true, title: true, assigneeId: true, creatorId: true, projectId: true },
+    select: { 
+      id: true, 
+      title: true, 
+      assigneeId: true, 
+      creatorId: true, 
+      projectId: true,
+      externalNumber: true,
+      externalProvider: true,
+      gitIntegration: true,
+    },
   });
   if (!task) return NextResponse.json({ error: "Không tìm thấy task" }, { status: 404 });
 
@@ -93,6 +103,49 @@ export async function POST(req: Request, { params }: Params) {
         link: `/projects/${task.projectId}`,
       })),
     });
+  }
+
+  // TWO-WAY SYNC: Post comment to GitHub / GitLab issue if linked
+  if (task.externalNumber && task.gitIntegration) {
+    try {
+      const integration = task.gitIntegration;
+      const token = decrypt(integration.token);
+      const provider = integration.provider;
+      const owner = integration.owner;
+      const name = integration.name;
+      const issueNumber = task.externalNumber;
+      
+      const commentBody = `**[ProjectFlow] ${user.name || "Someone"}:** ${comment.body}`;
+
+      if (provider === "github") {
+        const headers = {
+          Accept: "application/vnd.github.v3+json",
+          Authorization: `token ${token}`,
+          "Content-Type": "application/json",
+        };
+
+        await fetch(`https://api.github.com/repos/${owner}/${name}/issues/${issueNumber}/comments`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ body: commentBody }),
+        });
+      } else if (provider === "gitlab") {
+        const apiBase = integration.apiUrl || "https://gitlab.com";
+        const projectPath = encodeURIComponent(`${owner}/${name}`);
+        const headers = {
+          "PRIVATE-TOKEN": token,
+          "Content-Type": "application/json",
+        };
+
+        await fetch(`${apiBase}/api/v4/projects/${projectPath}/issues/${issueNumber}/notes`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ body: commentBody }),
+        });
+      }
+    } catch (e) {
+      console.error("Failed to sync comment to Git issue:", e);
+    }
   }
 
   return NextResponse.json({
