@@ -40,6 +40,11 @@ export function WorkspaceSwitcher({
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
   const [newName, setNewName] = React.useState("");
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   async function switchTo(id: string) {
     if (id === active?.id) return;
@@ -79,6 +84,26 @@ export function WorkspaceSwitcher({
     } finally {
       setCreating(false);
     }
+  }
+
+  if (!mounted) {
+    return (
+      <Button
+        variant="ghost"
+        className="w-full justify-between gap-2 px-2 font-normal"
+        disabled
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Layers className="h-4 w-4" />
+          </span>
+          <span className="truncate text-sm font-medium">
+            {active?.name ?? "Chọn workspace"}
+          </span>
+        </span>
+        <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </Button>
+    );
   }
 
   return (

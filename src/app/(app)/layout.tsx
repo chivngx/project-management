@@ -1,25 +1,12 @@
 import { requireUser } from "@/lib/session";
 import { getActiveWorkspace } from "@/lib/workspace";
-import dynamic from "next/dynamic";
+import { AppSidebar } from "@/components/app-sidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationBell } from "@/components/notification-bell";
 import { GlobalSearch } from "@/components/global-search";
 import { CommandPalette } from "@/components/command-palette";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-
-const AppSidebar = dynamic(
-  () => import("@/components/app-sidebar").then((mod) => mod.AppSidebar),
-  { ssr: false }
-);
-
-const NotificationBell = dynamic(
-  () => import("@/components/notification-bell").then((mod) => mod.NotificationBell),
-  { ssr: false }
-);
-
-const ThemeToggle = dynamic(
-  () => import("@/components/theme-toggle").then((mod) => mod.ThemeToggle),
-  { ssr: false }
-);
 
 export default async function AppLayout({
   children,

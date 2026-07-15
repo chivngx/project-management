@@ -32,6 +32,11 @@ type NotificationsResponse = { items: Notification[]; unread: number };
 export function NotificationBell() {
   const qc = useQueryClient();
   const [open, setOpen] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const { data, isLoading } = useQuery<NotificationsResponse>({
     queryKey: ["notifications"],
@@ -53,6 +58,14 @@ export function NotificationBell() {
 
   const unread = data?.unread ?? 0;
   const items = data?.items ?? [];
+
+  if (!mounted) {
+    return (
+      <Button variant="ghost" size="icon" aria-label="Thông báo" className="relative" disabled>
+        <Bell className="h-5 w-5" />
+      </Button>
+    );
+  }
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>

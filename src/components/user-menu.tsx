@@ -32,6 +32,31 @@ function initials(name?: string | null) {
 
 export function UserMenu({ user }: { user: SessionUserLite }) {
   const router = useRouter();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <Button variant="ghost" className="h-auto w-full justify-start gap-2 p-2" disabled>
+        <Avatar className="h-8 w-8">
+          <AvatarImage src={user.image ?? undefined} alt={user.name ?? ""} />
+          <AvatarFallback className="text-xs">{initials(user.name)}</AvatarFallback>
+        </Avatar>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block truncate text-sm font-medium">
+            {user.name ?? "User"}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {user.email}
+          </span>
+        </span>
+      </Button>
+    );
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
