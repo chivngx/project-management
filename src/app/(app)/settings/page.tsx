@@ -21,17 +21,15 @@ export default function SettingsPage() {
     queryKey: ["workspaces"],
     queryFn: () => apiFetch("/api/workspaces"),
   });
+  const { data: activeWorkspace } = useQuery<WsLite>({
+    queryKey: ["active-workspace"],
+    queryFn: () => apiFetch("/api/workspaces/active"),
+  });
   const { data: team } = useQuery<Member[]>({
     queryKey: ["team"],
     queryFn: () => apiFetch("/api/team"),
   });
 
-  // The active workspace is the one stored in the cookie; the API list returns
-  // all workspaces the user belongs to. We don't know which is "active" from
-  // the list alone, so we rely on the first membership (matches server default).
-  // For rename/delete, the server always operates on the cookie's active ws,
-  // so passing any workspace here is fine for display — the API re-checks.
-  const activeWorkspace = workspaces?.[0];
   const currentUserRole = team?.find((m) => m.id === me?.id)?.role;
 
   return (

@@ -4,6 +4,18 @@ import { db } from "@/lib/db";
 import { getApiContext } from "@/lib/api-context";
 import { setActiveWorkspaceCookie } from "@/lib/workspace";
 
+export async function GET() {
+  const { user, workspace } = await getApiContext();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!workspace) return NextResponse.json({ error: "No active workspace" }, { status: 400 });
+
+  return NextResponse.json({
+    id: workspace.id,
+    name: workspace.name,
+    image: workspace.image,
+  });
+}
+
 const schema = z.object({ workspaceId: z.string().min(1) });
 
 export async function POST(req: Request) {

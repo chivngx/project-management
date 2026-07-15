@@ -43,14 +43,12 @@ export function WorkspaceTab({
   const router = useRouter();
   const isOwner = currentUserRole === "OWNER";
   const [name, setName] = React.useState("");
-  const [loaded, setLoaded] = React.useState(false);
 
   React.useEffect(() => {
-    if (activeWorkspace && !loaded) {
+    if (activeWorkspace) {
       setName(activeWorkspace.name);
-      setLoaded(true);
     }
-  }, [activeWorkspace, loaded]);
+  }, [activeWorkspace]);
 
   // Fetch members for ownership transfer.
   const { data: members } = useQuery<Member[]>({
