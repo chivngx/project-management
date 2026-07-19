@@ -5,11 +5,12 @@ import { getApiContext } from "@/lib/api-context";
 import { PROJECT_PRIORITIES, PROJECT_STATUSES } from "@/lib/constants";
 
 export async function GET() {
-  const { user, workspace } = await getApiContext();
+  const { user, workspace, membership } = await getApiContext();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json([]);
 
-  const projects = await ProjectService.listProjects(workspace.id);
+  const isOwnerOrAdmin = membership?.role === "OWNER" || membership?.role === "ADMIN";
+  const projects = await ProjectService.listProjects(workspace.id, user.id, isOwnerOrAdmin);
   return NextResponse.json(projects);
 }
 

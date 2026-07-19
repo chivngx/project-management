@@ -7,7 +7,7 @@ import { PROJECT_PRIORITIES, PROJECT_STATUSES } from "@/lib/constants";
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
-  const { user, workspace } = await getApiContext();
+  const { user, workspace, membership } = await getApiContext();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
@@ -15,6 +15,12 @@ export async function GET(_req: Request, { params }: Params) {
   const project = await ProjectService.getProjectDetail(id, workspace.id);
   if (!project) {
     return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
+  }
+
+  const isOwnerOrAdmin = membership?.role === "OWNER" || membership?.role === "ADMIN";
+  const isProjectMember = project.members.some((m: any) => m.id === user.id);
+  if (!isOwnerOrAdmin && !isProjectMember) {
+    return forbidden("Bạn không có quyền truy cập dự án này");
   }
 
   return NextResponse.json(project);
@@ -42,11 +48,22 @@ const patchSchema = z.object({
 });
 
 export async function PATCH(req: Request, { params }: Params) {
-  const { user, workspace } = await getApiContext();
+  const { user, workspace, membership } = await getApiContext();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const { id } = await params;
+  const project = await ProjectService.getProjectDetail(id, workspace.id);
+  if (!project) {
+    return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
+  }
+
+  const isOwnerOrAdmin = membership?.role === "OWNER" || membership?.role === "ADMIN";
+  const isProjectMember = project.members.some((m: any) => m.id === user.id);
+  if (!isOwnerOrAdmin && !isProjectMember) {
+    return forbidden("Bạn không có quyền chỉnh sửa dự án này");
+  }
+
   const parsed = patchSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success)
     return NextResponse.json(

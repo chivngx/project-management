@@ -8,11 +8,17 @@ import { ProjectRepository } from "@/repositories/project.repository";
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
-  const { user, workspace } = await getApiContext();
+  const { user, workspace, membership } = await getApiContext();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const { id } = await params;
+
+  const isProjectMember = await ProjectRepository.findMembership(id, user.id);
+  const isOwnerOrAdmin = membership?.role === "OWNER" || membership?.role === "ADMIN";
+  if (!isProjectMember && !isOwnerOrAdmin) {
+    return forbidden("Bạn không có quyền truy cập tác vụ của dự án này");
+  }
 
   try {
     const tasks = await TaskService.listTasks(id, workspace.id);

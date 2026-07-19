@@ -4,9 +4,9 @@ import { WorkspaceRepository } from "@/repositories/workspace.repository";
 import { ActivityRepository } from "@/repositories/activity.repository";
 
 export const ProjectService = {
-  async listProjects(workspaceId: string) {
+  async listProjects(workspaceId: string, userId?: string, isOwnerOrAdmin?: boolean) {
     const rawProjects = await ProjectRepository.findByWorkspaceId(workspaceId);
-    return rawProjects.map((p: any) => {
+    const projects = rawProjects.map((p: any) => {
       const total = p.tasks?.length || 0;
       const done = (p.tasks || []).filter((t: any) => t.status === "DONE").length;
       return {
@@ -31,6 +31,9 @@ export const ProjectService = {
         doneCount: done,
       };
     });
+
+    if (isOwnerOrAdmin) return projects;
+    return projects.filter((p: any) => p.members.some((m: any) => m.id === userId));
   },
 
   async getProjectDetail(projectId: string, workspaceId: string) {
