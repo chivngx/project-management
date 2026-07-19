@@ -4,7 +4,7 @@ import { getApiContext } from "@/lib/api-context";
 
 /** Dashboard stats for the active workspace. */
 export async function GET() {
-  const { user, workspace } = await getApiContext();
+  const { user, workspace, membership } = await getApiContext();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace)
     return NextResponse.json({
@@ -24,7 +24,8 @@ export async function GET() {
     });
 
   try {
-    const stats = await StatsService.getDashboardStats(workspace.id, user.id);
+    const isOwnerOrAdmin = membership?.role === "OWNER" || membership?.role === "ADMIN";
+    const stats = await StatsService.getDashboardStats(workspace.id, user.id, isOwnerOrAdmin);
     return NextResponse.json(stats);
   } catch (e: any) {
     console.error("Dashboard stats calculation error:", e);

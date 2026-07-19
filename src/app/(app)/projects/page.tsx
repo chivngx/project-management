@@ -41,6 +41,17 @@ export default function ProjectsPage() {
     queryFn: () => apiFetch<ProjectListItem[]>("/api/projects"),
   });
 
+  const { data: me } = useQuery<any>({
+    queryKey: ["me"],
+    queryFn: () => apiFetch("/api/me"),
+  });
+  const { data: team = [] } = useQuery<any[]>({
+    queryKey: ["team"],
+    queryFn: () => apiFetch("/api/team"),
+  });
+  const currentUserRole = team.find((m) => m.id === me?.id)?.role;
+  const isOwnerOrAdmin = currentUserRole === "OWNER" || currentUserRole === "ADMIN";
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
       apiFetch<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" }),
@@ -86,14 +97,16 @@ export default function ProjectsPage() {
                 : `${total} dự án · hiển thị ${filtered.length} kết quả`}
           </p>
         </div>
-        <Button
-          onClick={() => setCreateOpen(true)}
-          size="sm"
-          className="shrink-0 gap-1.5"
-        >
-          <Plus className="size-4" />
-          Dự án mới
-        </Button>
+        {isOwnerOrAdmin && (
+          <Button
+            onClick={() => setCreateOpen(true)}
+            size="sm"
+            className="shrink-0 gap-1.5"
+          >
+            <Plus className="size-4" />
+            Dự án mới
+          </Button>
+        )}
       </header>
 
       {/* Toolbar */}

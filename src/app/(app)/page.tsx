@@ -22,6 +22,7 @@ import { RecentProjects } from "@/components/app/dashboard/recent-projects";
 import { TasksByStatusChart } from "@/components/app/dashboard/tasks-by-status-chart";
 import { MyTasksList } from "@/components/app/dashboard/my-tasks-list";
 import { RecentActivity } from "@/components/app/dashboard/recent-activity";
+import { CreateProjectDialog } from "@/components/app/projects/create-project-dialog";
 
 interface DashboardStats {
   totals: {
@@ -93,6 +94,14 @@ export default function DashboardPage() {
   });
 
   const [actionLoading, setActionLoading] = React.useState<string | null>(null);
+  const [createOpen, setCreateOpen] = React.useState(false);
+
+  const { data: team = [] } = useQuery<any[]>({
+    queryKey: ["team"],
+    queryFn: () => apiFetch("/api/team"),
+  });
+  const currentUserRole = team.find((m) => m.id === me?.id)?.role;
+  const isOwnerOrAdmin = currentUserRole === "OWNER" || currentUserRole === "ADMIN";
 
   async function handleAcceptInvite(workspaceId: string) {
     setActionLoading(workspaceId);
@@ -173,12 +182,12 @@ export default function DashboardPage() {
             Theo dõi tiến độ dự án và tác vụ của bạn trong một nơi.
           </p>
         </div>
-        <Button asChild size="sm" className="shrink-0 gap-1.5">
-          <Link href="/projects">
+        {isOwnerOrAdmin && (
+          <Button onClick={() => setCreateOpen(true)} size="sm" className="shrink-0 gap-1.5">
             <Plus className="size-4" />
             Dự án mới
-          </Link>
-        </Button>
+          </Button>
+        )}
       </header>
 
       {/* Pending Workspace Invitations */}
@@ -329,6 +338,8 @@ export default function DashboardPage() {
           />
         </div>
       </section>
+
+      <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );
 }

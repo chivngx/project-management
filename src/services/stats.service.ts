@@ -4,9 +4,17 @@ import { TaskRepository } from "@/repositories/task.repository";
 import { WorkspaceRepository } from "@/repositories/workspace.repository";
 
 export const StatsService = {
-  async getDashboardStats(workspaceId: string, userId: string) {
+  async getDashboardStats(workspaceId: string, userId: string, isOwnerOrAdmin?: boolean) {
     // 1. Fetch all projects of the workspace
-    const projects = await ProjectRepository.findByWorkspaceId(workspaceId);
+    let projects = await ProjectRepository.findByWorkspaceId(workspaceId);
+    
+    // If not admin, filter projects to only those where the user is a member
+    if (!isOwnerOrAdmin) {
+      projects = projects.filter((p: any) =>
+        (p.members || []).some((m: any) => m.userId === userId)
+      );
+    }
+
     const projectCount = projects.length;
     const projectIds = projects.map((p) => p.id);
 
@@ -44,12 +52,19 @@ export const StatsService = {
       .from("Project")
       .select("id, name, status, priority, dueDate, startDate, members:ProjectMember(userId)")
       .eq("workspaceId", workspaceId)
-      .order("createdAt", { ascending: false })
-      .limit(4);
+      .order("createdAt", { ascending: false });
 
     if (recentErr) throw recentErr;
 
-    const recentIds = (recentProjectsRaw || []).map((p) => p.id);
+    let filteredRecent = recentProjectsRaw || [];
+    if (!isOwnerOrAdmin) {
+      filteredRecent = filteredRecent.filter((p: any) =>
+        (p.members || []).some((m: any) => m.userId === userId)
+      );
+    }
+    const recentProjectsLimit = filteredRecent.slice(0, 4);
+
+    const recentIds = recentProjectsLimit.map((p) => p.id);
     let recentTasks: any[] = [];
     if (recentIds.length > 0) {
       const { data: recentTasksRaw, error: recentTasksErr } = await db
@@ -61,7 +76,7 @@ export const StatsService = {
       recentTasks = recentTasksRaw || [];
     }
 
-    const recentProjects = (recentProjectsRaw || []).map((p) => {
+    const recentProjects = recentProjectsLimit.map((p) => {
       const total = recentTasks.filter((t) => t.projectId === p.id).length;
       const done = recentTasks.filter((t) => t.projectId === p.id && t.status === "DONE").length;
       return {
