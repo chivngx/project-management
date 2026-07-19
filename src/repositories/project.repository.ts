@@ -108,4 +108,15 @@ export const ProjectRepository = {
     if (error) throw error;
     return true;
   },
+
+  async deleteProjectMembers(projectId: string, userIds: string[]) {
+    const { error } = await db
+      .from("ProjectMember")
+      .delete()
+      .eq("projectId", projectId)
+      .in("userId", userIds);
+
+    if (error) throw error;
+    return true;
+  },
 };

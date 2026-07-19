@@ -40,23 +40,6 @@ export async function POST(req: Request) {
     // Update role to MEMBER (which accepts the invitation)
     await WorkspaceRepository.updateMembership(workspaceId, user.id, "MEMBER");
 
-    // Automatically add the user as a member of all existing projects in this workspace
-    try {
-      const projects = await ProjectRepository.findByWorkspaceId(workspaceId);
-      const projectMembers = projects.map((p: any) => ({
-        id: crypto.randomUUID(),
-        projectId: p.id,
-        userId: user.id,
-        role: "MEMBER",
-      }));
-      if (projectMembers.length > 0) {
-        await ProjectRepository.createProjectMembers(projectMembers);
-      }
-    } catch (projectJoinErr) {
-      console.error("Failed to automatically join user to workspace projects:", projectJoinErr);
-      // Don't crash the accept flow if this secondary step fails
-    }
-
     // Update notification record
     await NotificationRepository.updateInvitationNotificationStatus(
       user.id,

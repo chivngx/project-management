@@ -70,6 +70,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { ProjectSettingsDialog } from "@/components/app/projects/project-settings-dialog";
+import { ManageProjectMembersDialog } from "@/components/app/projects/manage-project-members-dialog";
 import { TasksBoard } from "@/components/app/projects/tasks-board";
 import { getInitials } from "@/components/app/projects/helpers";
 import { IntegrationTab } from "@/components/app/projects/integration-tab";
@@ -330,7 +331,7 @@ export default function ProjectDetailsPage() {
 
         {/* Members tab */}
         <TabsContent value="members" className="outline-none">
-          <MembersTab members={project.members} tasks={tasks} />
+          <MembersTab project={project} tasks={tasks} />
         </TabsContent>
 
         {/* Integration tab */}
@@ -631,11 +632,27 @@ function OverviewTab({
 /* ---------------- Members tab ---------------- */
 
 interface MembersTabProps {
-  members: Member[];
+  project: ProjectDetail;
   tasks: Task[];
 }
 
-function MembersTab({ members, tasks }: MembersTabProps) {
+function MembersTab({ project, tasks }: MembersTabProps) {
+  const [manageOpen, setManageOpen] = React.useState(false);
+  const members = project.members;
+
+  // Get current user workspace role to verify permissions to edit members
+  const { data: me } = useQuery<any>({
+    queryKey: ["me"],
+    queryFn: () => apiFetch("/api/me"),
+  });
+  const { data: team = [] } = useQuery<any[]>({
+    queryKey: ["team"],
+    queryFn: () => apiFetch("/api/team"),
+  });
+
+  const currentUserRole = team.find((m) => m.id === me?.id)?.role;
+  const isOwnerOrAdmin = currentUserRole === "OWNER" || currentUserRole === "ADMIN";
+
   // Compute per-member task summary.
   const summary = React.useMemo(() => {
     const map = new Map<
@@ -657,81 +674,102 @@ function MembersTab({ members, tasks }: MembersTabProps) {
   }, [members, tasks]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Thành viên dự án</CardTitle>
-        <CardDescription>
-          {members.length} người tham gia dự án. Tóm tắt tác vụ được giao cho
-          từng thành viên.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {members.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground/70">
-            Chưa có thành viên trong dự án.
-          </p>
-        ) : (
-          <ul className="max-h-[36rem] divide-y overflow-y-auto thin-scroll">
-            {members.map((m) => {
-              const s = summary.get(m.id) ?? {
-                total: 0,
-                done: 0,
-                inProgress: 0,
-              };
-              const completion =
-                s.total === 0 ? 0 : Math.round((s.done / s.total) * 100);
-              return (
-                <li
-                  key={m.id}
-                  className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <Avatar>
-                      {m.image ? (
-                        <AvatarImage src={m.image} alt={m.name} />
-                      ) : null}
-                      <AvatarFallback>{getInitials(m.name)}</AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{m.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {m.email}
-                      </p>
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <div className="space-y-1.5">
+            <CardTitle className="text-base">Thành viên dự án</CardTitle>
+            <CardDescription>
+              {members.length} người tham gia dự án. Tóm tắt tác vụ được giao cho
+              từng thành viên.
+            </CardDescription>
+          </div>
+          {isOwnerOrAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setManageOpen(true)}
+              className="gap-1.5"
+            >
+              <Users className="size-4" />
+              Quản lý thành viên
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          {members.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground/70">
+              Chưa có thành viên trong dự án.
+            </p>
+          ) : (
+            <ul className="max-h-[36rem] divide-y overflow-y-auto thin-scroll">
+              {members.map((m) => {
+                const s = summary.get(m.id) ?? {
+                  total: 0,
+                  done: 0,
+                  inProgress: 0,
+                };
+                const completion =
+                  s.total === 0 ? 0 : Math.round((s.done / s.total) * 100);
+                return (
+                  <li
+                    key={m.id}
+                    className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar>
+                        {m.image ? (
+                          <AvatarImage src={m.image} alt={m.name} />
+                        ) : null}
+                        <AvatarFallback>{getInitials(m.name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{m.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {m.email}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-4 text-xs text-muted-foreground">
-                    <div className="text-right">
-                      <p className="font-medium text-foreground tabular-nums">
-                        {s.total}
-                      </p>
-                      <p>tác vụ</p>
+                    <div className="flex shrink-0 items-center gap-4 text-xs text-muted-foreground">
+                      <div className="text-right">
+                        <p className="font-medium text-foreground tabular-nums">
+                          {s.total}
+                        </p>
+                        <p>tác vụ</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium text-emerald-600 tabular-nums dark:text-emerald-400">
+                          {s.done}
+                        </p>
+                        <p>hoàn thành</p>
+                      </div>
+                      <div className="hidden text-right sm:block">
+                        <p className="font-medium text-amber-600 tabular-nums dark:text-amber-400">
+                          {s.inProgress}
+                        </p>
+                        <p>đang làm</p>
+                      </div>
+                      <div className="w-24">
+                        <Progress value={completion} className="h-1.5" />
+                        <p className="mt-1 text-right text-[10px] tabular-nums">
+                          {completion}%
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium text-emerald-600 tabular-nums dark:text-emerald-400">
-                        {s.done}
-                      </p>
-                      <p>hoàn thành</p>
-                    </div>
-                    <div className="hidden text-right sm:block">
-                      <p className="font-medium text-amber-600 tabular-nums dark:text-amber-400">
-                        {s.inProgress}
-                      </p>
-                      <p>đang làm</p>
-                    </div>
-                    <div className="w-24">
-                      <Progress value={completion} className="h-1.5" />
-                      <p className="mt-1 text-right text-[10px] tabular-nums">
-                        {completion}%
-                      </p>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <ManageProjectMembersDialog
+        project={project}
+        open={manageOpen}
+        onOpenChange={setManageOpen}
+      />
+    </>
   );
 }
 
