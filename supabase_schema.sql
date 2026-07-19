@@ -5,6 +5,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE "User" (
   "id" TEXT PRIMARY KEY DEFAULT COALESCE(NULL, 'u_' || md5(random()::text || clock_timestamp()::text)),
   "name" TEXT NOT NULL,
+  "username" TEXT UNIQUE NOT NULL,
   "email" TEXT UNIQUE NOT NULL,
   "passwordHash" TEXT NOT NULL,
   "image" TEXT,

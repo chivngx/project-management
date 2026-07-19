@@ -50,6 +50,7 @@ interface TaskCardProps {
   onDelete: (id: string) => void;
   /** Optional className for layout tweaks inside columns. */
   className?: string;
+  canEdit?: boolean;
 }
 
 export function TaskCard({
@@ -58,6 +59,7 @@ export function TaskCard({
   onStatusChange,
   onDelete,
   className,
+  canEdit = true,
 }: TaskCardProps) {
   const [editOpen, setEditOpen] = React.useState(false);
   const [commentsOpen, setCommentsOpen] = React.useState(false);
@@ -104,14 +106,18 @@ export function TaskCard({
               <MessageSquare className="size-4" />
               Bình luận
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={() => setConfirmOpen(true)}
-            >
-              <Trash2 className="size-4" />
-              Xóa tác vụ
-            </DropdownMenuItem>
+            {canEdit && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => setConfirmOpen(true)}
+                >
+                  <Trash2 className="size-4" />
+                  Xóa tác vụ
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -126,6 +132,7 @@ export function TaskCard({
         <Select
           value={task.status}
           onValueChange={(v) => onStatusChange(task.id, v)}
+          disabled={!canEdit}
         >
           <SelectTrigger
             size="sm"
@@ -159,8 +166,8 @@ export function TaskCard({
                 ) : null}
                 <AvatarFallback>{getInitials(task.assignee.name)}</AvatarFallback>
               </Avatar>
-              <span className="truncate text-xs text-muted-foreground">
-                {task.assignee.name}
+              <span className="truncate text-xs text-muted-foreground" title={`${task.assignee.name} (${task.assignee.username})`}>
+                {task.assignee.name} ({task.assignee.username})
               </span>
             </>
           ) : (
@@ -215,6 +222,7 @@ export function TaskCard({
         members={members}
         open={editOpen}
         onOpenChange={setEditOpen}
+        canEdit={canEdit}
       />
 
       <TaskCommentsDialog

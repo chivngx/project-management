@@ -7,6 +7,7 @@ import { GlobalSearch } from "@/components/global-search";
 import { CommandPalette } from "@/components/command-palette";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
+import { CreateWorkspaceFallback } from "@/components/create-workspace-fallback";
 
 export default async function AppLayout({
   children,
@@ -17,19 +18,7 @@ export default async function AppLayout({
   const { workspace, workspaces } = await getActiveWorkspace(user.id);
 
   if (!workspace) {
-    return (
-      <div className="flex min-h-screen items-center justify-center p-6">
-        <div className="max-w-md text-center space-y-2">
-          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
-            <span className="text-2xl">🏗️</span>
-          </div>
-          <h1 className="text-xl font-semibold">Chưa có workspace</h1>
-          <p className="text-sm text-muted-foreground">
-            Vui lòng đăng xuất và đăng ký lại, hoặc liên hệ quản trị viên.
-          </p>
-        </div>
-      </div>
-    );
+    return <CreateWorkspaceFallback />;
   }
 
   return (

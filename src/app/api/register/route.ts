@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
-import crypto from "crypto";
 import { z } from "zod";
-import { db } from "@/lib/db";
+import { AuthService } from "@/services/auth.service";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
-
-const BCRYPT_COST = 12;
 
 const schema = z.object({
   name: z.string().min(2, "Tên phải có ít nhất 2 ký tự").max(60),
+  username: z
+    .string()
+    .min(3, "Username phải có ít nhất 3 ký tự")
+    .max(30, "Username không được vượt quá 30 ký tự")
+    .regex(/^[a-zA-Z0-9_]+$/, "Username chỉ được chứa chữ cái, số và dấu gạch dưới"),
   email: z.string().email("Email không hợp lệ"),
   password: z
     .string()
@@ -30,178 +31,25 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
       const msg = parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ";
       return NextResponse.json({ error: msg }, { status: 400 });
     }
-    const { name, email, password } = parsed.data;
-    const normalized = email.trim().toLowerCase();
+    const { name, username, email, password } = parsed.data;
 
-    const { data: existing, error: existingErr } = await db
-      .from("User")
-      .select("id")
-      .eq("email", normalized)
-      .maybeSingle();
-
-    if (existingErr) throw existingErr;
-    if (existing) {
-      return NextResponse.json(
-        { error: "Email đã được sử dụng" },
-        { status: 409 }
-      );
-    }
-
-    const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
-
-    let userIdToCleanup: string | null = null;
-
-    try {
-      // 1. Create User
-      const newUserId = crypto.randomUUID();
-      const { data: user, error: userErr } = await db
-        .from("User")
-        .insert({
-          id: newUserId,
-          name,
-          email: normalized,
-          passwordHash,
-        })
-        .select()
-        .single();
-
-      if (userErr) throw userErr;
-      userIdToCleanup = user.id;
-
-      // 2. Create Workspace
-      const newWorkspaceId = crypto.randomUUID();
-      const { data: workspace, error: wsErr } = await db
-        .from("Workspace")
-        .insert({
-          id: newWorkspaceId,
-          name: `${name.split(" ")[0]}'s Workspace`,
-          ownerId: user.id,
-        })
-        .select()
-        .single();
-
-      if (wsErr) throw wsErr;
-
-      // 3. Create WorkspaceMember
-      const newMemberId = crypto.randomUUID();
-      const { error: memberErr } = await db
-        .from("WorkspaceMember")
-        .insert({
-          id: newMemberId,
-          workspaceId: workspace.id,
-          userId: user.id,
-          role: "OWNER",
-        });
-
-      if (memberErr) throw memberErr;
-
-      // 4. Create Project
-      const newProjectId = crypto.randomUUID();
-      const { data: starter, error: projErr } = await db
-        .from("Project")
-        .insert({
-          id: newProjectId,
-          workspaceId: workspace.id,
-          name: "Getting Started",
-          description:
-            "A starter project to explore the app. Feel free to rename or delete it.",
-          status: "ACTIVE",
-          priority: "MEDIUM",
-          startDate: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
-        })
-        .select()
-        .single();
-
-      if (projErr) throw projErr;
-
-      // 5. Create ProjectMember
-      const newProjMemberId = crypto.randomUUID();
-      const { error: pmErr } = await db
-        .from("ProjectMember")
-        .insert({
-          id: newProjMemberId,
-          projectId: starter.id,
-          userId: user.id,
-          role: "MEMBER",
-        });
-
-      if (pmErr) throw pmErr;
-
-      // 6. Create Tasks
-      const tasksData = [
-        {
-          id: crypto.randomUUID(),
-          projectId: starter.id,
-          title: "Create your first project",
-          status: "TODO",
-          priority: "MEDIUM",
-          creatorId: user.id,
-          assigneeId: user.id,
-          dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString(),
-        },
-        {
-          id: crypto.randomUUID(),
-          projectId: starter.id,
-          title: "Invite a team member",
-          status: "TODO",
-          priority: "LOW",
-          creatorId: user.id,
-          assigneeId: user.id,
-        },
-        {
-          id: crypto.randomUUID(),
-          projectId: starter.id,
-          title: "Explore the dashboard",
-          status: "DONE",
-          priority: "LOW",
-          creatorId: user.id,
-          assigneeId: user.id,
-        },
-      ];
-
-      const { error: tasksErr } = await db
-        .from("Task")
-        .insert(tasksData);
-
-      if (tasksErr) throw tasksErr;
-
-      // 7. Create Activity
-      const newActivityId = crypto.randomUUID();
-      const { error: actErr } = await db
-        .from("Activity")
-        .insert({
-          id: newActivityId,
-          workspaceId: workspace.id,
-          userId: user.id,
-          action: "created_workspace",
-          entityType: "WORKSPACE",
-          entityId: workspace.id,
-          message: `${name} created workspace ${workspace.name}`,
-        });
-
-      if (actErr) throw actErr;
-
-    } catch (e) {
-      console.error("[register]", e);
-      if (userIdToCleanup) {
-        await db.from("User").delete().eq("id", userIdToCleanup);
-      }
-      throw e;
-    }
+    await AuthService.registerUser(name, email, password, username);
 
     return NextResponse.json({ ok: true });
-  } catch (e) {
-    console.error("[register]", e);
-    return NextResponse.json(
-      { error: "Đăng ký thất bại, vui lòng thử lại" },
-      { status: 500 }
-    );
+  } catch (e: any) {
+    if (e.message === "EMAIL_TAKEN") {
+      return NextResponse.json({ error: "Email đã được sử dụng" }, { status: 409 });
+    }
+    if (e.message === "USERNAME_TAKEN") {
+      return NextResponse.json({ error: "Username đã được sử dụng" }, { status: 409 });
+    }
+    console.error("Registration error:", e);
+    return NextResponse.json({ error: "Đã xảy ra lỗi hệ thống" }, { status: 500 });
   }
 }

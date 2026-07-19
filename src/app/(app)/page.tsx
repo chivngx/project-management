@@ -15,6 +15,7 @@ import {
 import { apiFetch } from "@/lib/api-fetch";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 import { StatCard } from "@/components/app/dashboard/stat-card";
 import { RecentProjects } from "@/components/app/dashboard/recent-projects";
@@ -85,6 +86,48 @@ export default function DashboardPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: invitations, refetch: refetchInvitations } = useQuery<any[]>({
+    queryKey: ["workspace-invitations"],
+    queryFn: () => apiFetch<any[]>("/api/workspaces/invitations"),
+    staleTime: 10 * 1000,
+  });
+
+  const [actionLoading, setActionLoading] = React.useState<string | null>(null);
+
+  async function handleAcceptInvite(workspaceId: string) {
+    setActionLoading(workspaceId);
+    try {
+      await apiFetch("/api/workspaces/invitations/accept", {
+        method: "POST",
+        body: JSON.stringify({ workspaceId }),
+      });
+      toast.success("Đã tham gia workspace thành công!");
+      refetchInvitations();
+      // Reload page to refresh sidebar workspaces and load stats
+      window.location.reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleDeclineInvite(workspaceId: string) {
+    setActionLoading(workspaceId);
+    try {
+      await apiFetch("/api/workspaces/invitations/decline", {
+        method: "POST",
+        body: JSON.stringify({ workspaceId }),
+      });
+      toast.success("Đã từ chối lời mời");
+      refetchInvitations();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Thao tác thất bại");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   const {
     data: stats,
     isLoading: statsLoading,
@@ -137,6 +180,54 @@ export default function DashboardPage() {
           </Link>
         </Button>
       </header>
+
+      {/* Pending Workspace Invitations */}
+      {invitations && invitations.length > 0 && (
+        <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/50 p-5 dark:border-amber-900/40 dark:bg-amber-950/20">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">✉️</span>
+            <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-300">
+              Lời mời tham gia Workspace ({invitations.length})
+            </h2>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {invitations.map((inv) => (
+              <div
+                key={inv.id}
+                className="flex flex-col justify-between gap-3 rounded-lg border border-amber-100 bg-card p-4 shadow-sm dark:border-amber-950"
+              >
+                <div>
+                  <h3 className="font-semibold text-foreground text-sm">
+                    {inv.workspace?.name}
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Được mời vào {new Date(inv.joinedAt).toLocaleDateString("vi-VN")}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-amber-600 hover:bg-amber-700 text-white border-0"
+                    disabled={actionLoading === inv.workspaceId}
+                    onClick={() => handleAcceptInvite(inv.workspaceId)}
+                  >
+                    Chấp nhận
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    disabled={actionLoading === inv.workspaceId}
+                    onClick={() => handleDeclineInvite(inv.workspaceId)}
+                  >
+                    Từ chối
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stat cards — staggered fade-up */}
       <section

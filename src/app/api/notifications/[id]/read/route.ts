@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { NotificationService } from "@/services/notification.service";
 import { getApiContext } from "@/lib/api-context";
 
 type Params = { params: Promise<{ id: string }> };
@@ -10,13 +10,11 @@ export async function PATCH(_req: Request, { params }: Params) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const { error } = await db
-    .from("Notification")
-    .update({ read: true })
-    .eq("id", id)
-    .eq("userId", user.id);
-
-  if (error) throw error;
-
-  return NextResponse.json({ ok: true });
+  try {
+    await NotificationService.readSingleNotification(id, user.id);
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    console.error("Read single notification error:", e);
+    return NextResponse.json({ error: "Lỗi cập nhật thông báo" }, { status: 500 });
+  }
 }

@@ -121,6 +121,13 @@ export function CreateProjectDialog({
       toast.error("Ngày kết thúc không được trước ngày bắt đầu");
       return;
     }
+    if (dueDate) {
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      if (dueDate < todayStr) {
+        toast.error("Ngày hạn không được trước ngày hiện tại");
+        return;
+      }
+    }
     createMutation.mutate({
       name: name.trim(),
       description: description.trim() || null,
@@ -221,6 +228,7 @@ export function CreateProjectDialog({
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
+                min={new Date().toLocaleDateString("en-CA")}
               />
             </div>
           </div>
@@ -267,7 +275,7 @@ export function CreateProjectDialog({
                           </Avatar>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-medium">
-                              {m.name}
+                              {m.name} ({m.username})
                             </span>
                             <span className="block truncate text-xs text-muted-foreground">
                               {m.email}

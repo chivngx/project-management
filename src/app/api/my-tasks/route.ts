@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { ProjectRepository } from "@/repositories/project.repository";
+import { TaskRepository } from "@/repositories/task.repository";
 import { getApiContext } from "@/lib/api-context";
 
 type TaskWithProject = {
@@ -22,7 +23,7 @@ function mapTask(t: any): TaskWithProject {
     priority: t.priority,
     dueDate: t.dueDate,
     createdAt: t.createdAt,
-    project: { id: t.project?.id, name: t.project?.name },
+    project: { id: (t.project as any)?.id, name: (t.project as any)?.name },
   };
 }
 
@@ -34,28 +35,14 @@ export async function GET() {
   if (!workspace)
     return NextResponse.json({ TODO: [], IN_PROGRESS: [], REVIEW: [], DONE: [] });
 
-  const { data: projects, error: projErr } = await db
-    .from("Project")
-    .select("id")
-    .eq("workspaceId", workspace.id);
-
-  if (projErr) throw projErr;
-  const projectIds = (projects || []).map((p) => p.id);
+  const projects = await ProjectRepository.findByWorkspaceId(workspace.id);
+  const projectIds = projects.map((p) => p.id);
 
   if (projectIds.length === 0) {
     return NextResponse.json({ TODO: [], IN_PROGRESS: [], REVIEW: [], DONE: [] });
   }
 
-  const { data: rawTasks, error: tasksErr } = await db
-    .from("Task")
-    .select("*, project:Project(id, name)")
-    .eq("assigneeId", user.id)
-    .in("projectId", projectIds)
-    .order("dueDate", { ascending: true })
-    .order("createdAt", { ascending: false });
-
-  if (tasksErr) throw tasksErr;
-  const tasks = (rawTasks || []) as any[];
+  const tasks = await TaskRepository.findByAssigneeIdAndProjects(user.id, projectIds);
 
   const grouped: Record<string, TaskWithProject[]> = {
     TODO: [],

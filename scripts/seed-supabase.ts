@@ -65,6 +65,7 @@ async function seed() {
     {
       id: adminId,
       name: "Admin User",
+      username: "admin_user",
       email: "admin@example.com",
       passwordHash,
       image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
@@ -73,6 +74,7 @@ async function seed() {
     {
       id: janeId,
       name: "Jane Smith",
+      username: "jane_smith",
       email: "jane@example.com",
       passwordHash,
       image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop",

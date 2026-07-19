@@ -107,6 +107,13 @@ export function ProjectSettingsDialog({
       toast.error("Ngày kết thúc không được trước ngày bắt đầu");
       return;
     }
+    if (dueDate) {
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      if (dueDate < todayStr) {
+        toast.error("Ngày hạn không được trước ngày hiện tại");
+        return;
+      }
+    }
     patchMutation.mutate({
       name: name.trim(),
       description: description.trim() || null,
@@ -129,35 +136,35 @@ export function ProjectSettingsDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-name">
-              Tên dự án <span className="text-destructive">*</span>
-            </Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-name">Tên dự án</Label>
             <Input
               id="edit-name"
+              placeholder="Nhập tên dự án…"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              maxLength={80}
+              minLength={2}
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-desc">Mô tả</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-desc">Mô tả dự án</Label>
             <Textarea
               id="edit-desc"
+              placeholder="Nhập mô tả dự án (không bắt buộc)…"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              className="resize-none"
               rows={3}
-              maxLength={500}
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
               <Label htmlFor="edit-status">Trạng thái</Label>
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger id="edit-status" className="w-full">
+              <Select value={status} onValueChange={(val: any) => setStatus(val)}>
+                <SelectTrigger id="edit-status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -169,10 +176,11 @@ export function ProjectSettingsDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-priority">Ưu tiên</Label>
-              <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger id="edit-priority" className="w-full">
+
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-priority">Độ ưu tiên</Label>
+              <Select value={priority} onValueChange={(val: any) => setPriority(val)}>
+                <SelectTrigger id="edit-priority">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -186,7 +194,7 @@ export function ProjectSettingsDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="edit-start">Ngày bắt đầu</Label>
               <Input
@@ -203,6 +211,7 @@ export function ProjectSettingsDialog({
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
+                min={new Date().toLocaleDateString("en-CA")}
               />
             </div>
           </div>

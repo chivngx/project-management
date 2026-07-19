@@ -1,7 +1,8 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { WorkspaceRepository } from "@/repositories/workspace.repository";
+import { UserRepository } from "@/repositories/user.repository";
 
 export type SessionUser = {
   id: string;
@@ -19,11 +20,15 @@ export async function getSession() {
 export async function requireUser(): Promise<SessionUser> {
   const session = await getSession();
   if (!session?.user?.id) redirect("/login");
+
+  const record = await UserRepository.findById(session.user.id);
+  if (!record) redirect("/login");
+
   return {
-    id: session.user.id,
-    name: session.user.name,
-    email: session.user.email,
-    image: session.user.image,
+    id: record.id,
+    name: record.name,
+    email: record.email,
+    image: record.image,
   };
 }
 
@@ -36,18 +41,10 @@ export async function requireUser(): Promise<SessionUser> {
  */
 export async function requireUserWithWorkspace() {
   const user = await requireUser();
-
-  const { data: rawMemberships, error } = await db
-    .from("WorkspaceMember")
-    .select("*, workspace:Workspace(*)")
-    .eq("userId", user.id)
-    .order("joinedAt", { ascending: true });
-
-  if (error) throw error;
-  const memberships = (rawMemberships || []) as any[];
+  const memberships = await WorkspaceRepository.findMembershipsByUserId(user.id);
 
   if (memberships.length === 0) {
-    return { user, workspace: null, workspaces: [] as typeof memberships };
+    return { user, workspace: null, workspaces: [] };
   }
 
   // Default to the first workspace; per-request override can be added later.

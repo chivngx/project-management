@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { ProjectRepository } from "@/repositories/project.repository";
+import { TaskRepository } from "@/repositories/task.repository";
 import { getApiContext } from "@/lib/api-context";
 
 /** Tasks with a due date in the active workspace, for the calendar view.
@@ -24,37 +25,27 @@ export async function GET(req: Request) {
     end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   }
 
-  const { data: projects, error: projErr } = await db
-    .from("Project")
-    .select("id")
-    .eq("workspaceId", workspace.id);
-
-  if (projErr) throw projErr;
-  const projectIds = (projects || []).map((p) => p.id);
+  const projects = await ProjectRepository.findByWorkspaceId(workspace.id);
+  const projectIds = projects.map((p) => p.id);
 
   if (projectIds.length === 0) return NextResponse.json([]);
 
-  const { data: rawTasks, error: tasksErr } = await db
-    .from("Task")
-    .select("id, title, status, priority, dueDate, projectId, project:Project(name), assignee:User!Task_assigneeId_fkey(name, image)")
-    .in("projectId", projectIds)
-    .gte("dueDate", start.toISOString())
-    .lt("dueDate", end.toISOString())
-    .order("dueDate", { ascending: true });
-
-  if (tasksErr) throw tasksErr;
-  const tasks = (rawTasks || []) as any[];
+  const tasks = await TaskRepository.findByProjectsAndDueDateRange(
+    projectIds,
+    start.toISOString(),
+    end.toISOString()
+  );
 
   return NextResponse.json(
-    tasks.map((t) => ({
+    tasks.map((t: any) => ({
       id: t.id,
       title: t.title,
       status: t.status,
       priority: t.priority,
       dueDate: t.dueDate,
-      projectName: t.project?.name ?? null,
+      projectName: (t.project as any)?.name ?? null,
       projectId: t.projectId,
-      assigneeName: t.assignee?.name ?? null,
+      assigneeName: (t.assignee as any)?.name ?? null,
     }))
   );
 }

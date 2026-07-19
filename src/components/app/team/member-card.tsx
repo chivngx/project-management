@@ -42,6 +42,7 @@ export type TeamRole = "OWNER" | "ADMIN" | "MEMBER";
 export interface TeamMember {
   id: string;
   name: string | null;
+  username?: string;
   email: string;
   image: string | null;
   role: TeamRole;
@@ -173,7 +174,12 @@ export function MemberCard({
                 </span>
               )}
             </p>
-            <p className="text-xs text-muted-foreground truncate" title={member.email}>
+            {member.username && (
+              <p className="text-xs text-muted-foreground truncate" title={member.username}>
+                @{member.username}
+              </p>
+            )}
+            <p className="text-[11px] text-muted-foreground/75 truncate" title={member.email}>
               {member.email}
             </p>
             <span

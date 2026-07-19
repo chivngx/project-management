@@ -13,24 +13,48 @@ type Member = { id: string; name: string | null; email: string; role: string };
 type Me = { id: string; name: string; email: string; image: string | null };
 
 export default function SettingsPage() {
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const { data: me } = useQuery<Me>({
     queryKey: ["me"],
     queryFn: () => apiFetch("/api/me"),
+    enabled: mounted,
   });
   const { data: workspaces } = useQuery<WsLite[]>({
     queryKey: ["workspaces"],
     queryFn: () => apiFetch("/api/workspaces"),
+    enabled: mounted,
   });
   const { data: activeWorkspace } = useQuery<WsLite>({
     queryKey: ["active-workspace"],
     queryFn: () => apiFetch("/api/workspaces/active"),
+    enabled: mounted,
   });
   const { data: team } = useQuery<Member[]>({
     queryKey: ["team"],
     queryFn: () => apiFetch("/api/team"),
+    enabled: mounted,
   });
 
   const currentUserRole = team?.find((m) => m.id === me?.id)?.role;
+
+  if (!mounted) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <div className="h-8 w-28 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+          <div className="h-4 w-48 bg-zinc-200 dark:bg-zinc-800 rounded mt-2 animate-pulse" />
+        </div>
+        <div className="space-y-4">
+          <div className="h-10 bg-zinc-200 dark:bg-zinc-800 rounded w-full max-w-sm animate-pulse" />
+          <div className="h-64 bg-zinc-100 dark:bg-zinc-900/50 rounded w-full animate-pulse" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

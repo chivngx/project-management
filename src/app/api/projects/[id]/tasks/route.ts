@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import crypto from "crypto";
-import { db } from "@/lib/db";
+import { TaskService } from "@/services/task.service";
 import { getApiContext, canAdmin, forbidden } from "@/lib/api-context";
 import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
+import { ProjectRepository } from "@/repositories/project.repository";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -13,26 +13,17 @@ export async function GET(_req: Request, { params }: Params) {
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const { id } = await params;
-  const { data: project, error: projErr } = await db
-    .from("Project")
-    .select("id")
-    .eq("id", id)
-    .eq("workspaceId", workspace.id)
-    .maybeSingle();
 
-  if (projErr) throw projErr;
-  if (!project)
-    return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
-
-  const { data: tasks, error: tasksErr } = await db
-    .from("Task")
-    .select("*, assignee:User!Task_assigneeId_fkey(*), creator:User!Task_creatorId_fkey(*)")
-    .eq("projectId", id)
-    .order("createdAt", { ascending: true });
-
-  if (tasksErr) throw tasksErr;
-
-  return NextResponse.json(tasks || []);
+  try {
+    const tasks = await TaskService.listTasks(id, workspace.id);
+    return NextResponse.json(tasks);
+  } catch (e: any) {
+    if (e.message === "PROJECT_NOT_FOUND") {
+      return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
+    }
+    console.error("List tasks error:", e);
+    return NextResponse.json({ error: "Đã xảy ra lỗi hệ thống" }, { status: 500 });
+  }
 }
 
 const createSchema = z.object({
@@ -48,7 +39,19 @@ const createSchema = z.object({
   status: z.enum(TASK_STATUSES).optional(),
   priority: z.enum(TASK_PRIORITIES).optional(),
   assigneeId: z.string().optional().nullable(),
-  dueDate: z.string().datetime().optional().nullable(),
+  dueDate: z
+    .string()
+    .datetime()
+    .refine((val) => {
+      if (!val) return true;
+      const limit = new Date();
+      limit.setDate(limit.getDate() - 1); // 1-day safety margin for timezone offsets
+      limit.setHours(0, 0, 0, 0);
+      const selected = new Date(val);
+      return selected >= limit;
+    }, "Ngày hạn không được trước ngày hiện tại")
+    .optional()
+    .nullable(),
 });
 
 export async function POST(req: Request, { params }: Params) {
@@ -57,26 +60,9 @@ export async function POST(req: Request, { params }: Params) {
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const { id } = await params;
-  const { data: project, error: projErr } = await db
-    .from("Project")
-    .select("id, name")
-    .eq("id", id)
-    .eq("workspaceId", workspace.id)
-    .maybeSingle();
-
-  if (projErr) throw projErr;
-  if (!project)
-    return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
 
   // Authorization: caller must be a member of this project OR a workspace admin.
-  const { data: isProjectMember, error: pmErr } = await db
-    .from("ProjectMember")
-    .select("id")
-    .eq("projectId", id)
-    .eq("userId", user.id)
-    .maybeSingle();
-
-  if (pmErr) throw pmErr;
+  const isProjectMember = await ProjectRepository.findMembership(id, user.id);
 
   if (!isProjectMember && !canAdmin(membership))
     return forbidden("Bạn phải là thành viên dự án để tạo tác vụ");
@@ -87,60 +73,21 @@ export async function POST(req: Request, { params }: Params) {
       { error: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" },
       { status: 400 }
     );
-  const d = parsed.data;
 
-  // Validate assignee is a project member (return 400, not silent drop).
-  let assigneeId: string | null = null;
-  if (d.assigneeId) {
-    const { data: member, error: assigneeErr } = await db
-      .from("ProjectMember")
-      .select("id")
-      .eq("projectId", id)
-      .eq("userId", d.assigneeId)
-      .maybeSingle();
-
-    if (assigneeErr) throw assigneeErr;
-    if (!member)
+  try {
+    const task = await TaskService.createTask(id, workspace.id, { id: user.id, name: user.name }, parsed.data);
+    return NextResponse.json(task);
+  } catch (e: any) {
+    if (e.message === "PROJECT_NOT_FOUND") {
+      return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
+    }
+    if (e.message === "ASSIGNEE_NOT_PROJECT_MEMBER") {
       return NextResponse.json(
         { error: "Người được giao không phải thành viên dự án" },
         { status: 400 }
       );
-    assigneeId = d.assigneeId;
+    }
+    console.error("Task creation error:", e);
+    return NextResponse.json({ error: "Đã xảy ra lỗi hệ thống" }, { status: 500 });
   }
-
-  const newTaskId = crypto.randomUUID();
-  const { data: task, error: createErr } = await db
-    .from("Task")
-    .insert({
-      id: newTaskId,
-      projectId: id,
-      title: d.title,
-      description: d.description ?? null,
-      status: d.status ?? "TODO",
-      priority: d.priority ?? "MEDIUM",
-      assigneeId,
-      creatorId: user.id,
-      dueDate: d.dueDate ? new Date(d.dueDate).toISOString() : null,
-    })
-    .select()
-    .single();
-
-  if (createErr) throw createErr;
-
-  const newActivityId = crypto.randomUUID();
-  const { error: actErr } = await db
-    .from("Activity")
-    .insert({
-      id: newActivityId,
-      workspaceId: workspace.id,
-      userId: user.id,
-      action: "created_task",
-      entityType: "TASK",
-      entityId: task.id,
-      message: `${user.name ?? "Someone"} created task ${task.title}`,
-    });
-
-  if (actErr) throw actErr;
-
-  return NextResponse.json({ id: task.id });
 }

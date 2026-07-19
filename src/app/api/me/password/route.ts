@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { db } from "@/lib/db";
+import { UserRepository } from "@/repositories/user.repository";
 import { getApiContext } from "@/lib/api-context";
 
 const schema = z.object({
-  currentPassword: z.string().min(1, "Vui lòng nhập mật khẩu hiện tại"),
+  currentPassword: z.string().optional(),
   newPassword: z
     .string()
     .min(8, "Mật khẩu mới phải có ít nhất 8 ký tự")
@@ -29,45 +29,44 @@ export async function PATCH(req: Request) {
 
   const { currentPassword, newPassword } = parsed.data;
 
-  // Fetch the current password hash.
-  const { data: record, error: findErr } = await db
-    .from("User")
-    .select("passwordHash, tokenVersion")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (findErr) throw findErr;
+  const record = await UserRepository.findById(user.id);
   if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const valid = await bcrypt.compare(currentPassword, record.passwordHash);
-  if (!valid) {
-    return NextResponse.json(
-      { error: "Mật khẩu hiện tại không đúng" },
-      { status: 400 }
-    );
-  }
+  const hasPassword = record.passwordHash !== "google_oauth_no_password";
 
-  // Disallow reusing the same password.
-  const sameAsOld = await bcrypt.compare(newPassword, record.passwordHash);
-  if (sameAsOld) {
-    return NextResponse.json(
-      { error: "Mật khẩu mới phải khác mật khẩu hiện tại" },
-      { status: 400 }
-    );
+  if (hasPassword) {
+    if (!currentPassword) {
+      return NextResponse.json(
+        { error: "Vui lòng nhập mật khẩu hiện tại" },
+        { status: 400 }
+      );
+    }
+
+    const valid = await bcrypt.compare(currentPassword, record.passwordHash);
+    if (!valid) {
+      return NextResponse.json(
+        { error: "Mật khẩu hiện tại không đúng" },
+        { status: 400 }
+      );
+    }
+
+    // Disallow reusing the same password
+    const sameAsOld = await bcrypt.compare(newPassword, record.passwordHash);
+    if (sameAsOld) {
+      return NextResponse.json(
+        { error: "Mật khẩu mới phải khác mật khẩu hiện tại" },
+        { status: 400 }
+      );
+    }
   }
 
   const passwordHash = await bcrypt.hash(newPassword, 12);
-  // Increment tokenVersion to invalidate all existing sessions (JWT
-  // revocation): the jwt callback checks tokenVersion against the DB.
-  const { error: updateErr } = await db
-    .from("User")
-    .update({
-      passwordHash,
-      tokenVersion: (record.tokenVersion || 0) + 1,
-    })
-    .eq("id", user.id);
-
-  if (updateErr) throw updateErr;
+  
+  // Increment tokenVersion to invalidate all existing sessions
+  await UserRepository.update(user.id, {
+    passwordHash,
+    tokenVersion: (record.tokenVersion || 0) + 1,
+  });
 
   return NextResponse.json({ ok: true });
 }

@@ -20,3 +20,20 @@ export async function emitToWorkspace(
     console.warn("[realtime] emit failed:", (e as Error).message);
   }
 }
+
+export async function emitToUser(
+  userId: string,
+  event: string,
+  payload: unknown
+): Promise<void> {
+  try {
+    await fetch(`${REALTIME_URL}/emit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room: `user:${userId}`, event, payload }),
+    });
+  } catch (e) {
+    // Realtime service may be down; don't fail the request.
+    console.warn("[realtime] emitToUser failed:", (e as Error).message);
+  }
+}

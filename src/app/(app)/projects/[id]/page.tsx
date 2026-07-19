@@ -118,9 +118,12 @@ export default function ProjectDetailsPage() {
       queryClient.invalidateQueries({ queryKey: ["project", id] });
     };
     const onTaskDeleted = onTaskUpdated;
+    const onTaskCreated = onTaskUpdated;
+    socket.on("task:created", onTaskCreated);
     socket.on("task:updated", onTaskUpdated);
     socket.on("task:deleted", onTaskDeleted);
     return () => {
+      socket.off("task:created", onTaskCreated);
       socket.off("task:updated", onTaskUpdated);
       socket.off("task:deleted", onTaskDeleted);
     };

@@ -101,6 +101,13 @@ export function CreateTaskDialog({
       toast.error("Tiêu đề tác vụ phải có ít nhất 2 ký tự");
       return;
     }
+    if (dueDate) {
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      if (dueDate < todayStr) {
+        toast.error("Ngày hạn không được trước ngày hiện tại");
+        return;
+      }
+    }
     createMutation.mutate({
       title: title.trim(),
       description: description.trim() || null,
@@ -193,7 +200,7 @@ export function CreateTaskDialog({
                   <SelectItem value="__none__">Chưa giao</SelectItem>
                   {members.map((m) => (
                     <SelectItem key={m.id} value={m.id}>
-                      {m.name}
+                      {m.name} ({m.username})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -205,6 +212,7 @@ export function CreateTaskDialog({
                 id="new-task-due"
                 type="date"
                 value={dueDate}
+                min={new Date().toLocaleDateString("en-CA")}
                 onChange={(e) => setDueDate(e.target.value)}
               />
             </div>

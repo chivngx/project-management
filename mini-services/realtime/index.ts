@@ -3,9 +3,18 @@ import { Server } from "socket.io";
 
 const PORT = 3003;
 
-const httpServer = createServer((req, res) => {
-  // Health check + an internal emit endpoint that the Next.js app calls
-  // to broadcast events without needing a socket client of its own.
+const httpServer = createServer();
+
+const io = new Server(httpServer, {
+  path: "/",
+  cors: { origin: "*", methods: ["GET", "POST"] },
+});
+
+// Intercept request listener to handle /emit before socket.io gets it
+const originalRequestListeners = [...httpServer.listeners("request")];
+httpServer.removeAllListeners("request");
+
+httpServer.on("request", (req, res) => {
   if (req.method === "POST" && req.url?.startsWith("/emit")) {
     let body = "";
     req.on("data", (c) => (body += c));
@@ -28,13 +37,10 @@ const httpServer = createServer((req, res) => {
     return;
   }
 
-  res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ service: "realtime", ok: true, port: PORT }));
-});
-
-const io = new Server(httpServer, {
-  path: "/",
-  cors: { origin: "*", methods: ["GET", "POST"] },
+  // Forward to socket.io's original listeners
+  for (const listener of originalRequestListeners) {
+    listener.call(httpServer, req, res);
+  }
 });
 
 // Room = workspace id. Clients join their active workspace room to receive

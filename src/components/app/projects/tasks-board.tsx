@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import {
@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 
 import { TaskCard, TaskCardSkeleton } from "./task-card";
 import { CreateTaskDialog } from "./create-task-dialog";
-import type { Member, Task } from "./types";
+import type { Member, Task, ProjectDetail } from "./types";
 
 interface TasksBoardProps {
   projectId: string;
@@ -51,14 +51,20 @@ function DraggableTaskCard({
   members,
   onStatusChange,
   onDelete,
+  canEdit,
 }: {
   task: Task;
   members: Member[];
   onStatusChange: (id: string, status: string) => void;
   onDelete: (id: string) => void;
+  canEdit: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: task.id, data: { status: task.status } });
+    useDraggable({
+      id: task.id,
+      data: { status: task.status },
+      disabled: !canEdit,
+    });
 
   const style: React.CSSProperties = {
     transform: transform ? CSS.Translate.toString(transform) : undefined,
@@ -73,6 +79,7 @@ function DraggableTaskCard({
         members={members}
         onStatusChange={onStatusChange}
         onDelete={onDelete}
+        canEdit={canEdit}
       />
     </div>
   );
@@ -87,6 +94,8 @@ function Column({
   onStatusChange,
   onDelete,
   isOver,
+  me,
+  isOwnerOrAdmin,
 }: {
   status: string;
   items: Task[];
@@ -95,6 +104,8 @@ function Column({
   onStatusChange: (id: string, status: string) => void;
   onDelete: (id: string) => void;
   isOver: boolean;
+  me: any;
+  isOwnerOrAdmin: boolean;
 }) {
   const { setNodeRef } = useDroppable({ id: status });
   return (
@@ -140,15 +151,19 @@ function Column({
               {isOver ? "Thả tác vụ vào đây" : "Kéo thả tác vụ vào đây"}
             </div>
           ) : (
-            items.map((t) => (
-              <DraggableTaskCard
-                key={t.id}
-                task={t}
-                members={members}
-                onStatusChange={onStatusChange}
-                onDelete={onDelete}
-              />
-            ))
+            items.map((t) => {
+              const canEdit = isOwnerOrAdmin || t.creatorId === me?.id || t.assigneeId === me?.id;
+              return (
+                <DraggableTaskCard
+                  key={t.id}
+                  task={t}
+                  members={members}
+                  onStatusChange={onStatusChange}
+                  onDelete={onDelete}
+                  canEdit={canEdit}
+                />
+              );
+            })
           )}
         </div>
       </div>
@@ -163,6 +178,17 @@ export function TasksBoard({
   loading = false,
 }: TasksBoardProps) {
   const queryClient = useQueryClient();
+  const { data: me } = useQuery<any>({
+    queryKey: ["me"],
+    queryFn: () => apiFetch("/api/me"),
+  });
+  const { data: team = [] } = useQuery<any[]>({
+    queryKey: ["team"],
+    queryFn: () => apiFetch("/api/team"),
+  });
+  const currentUserRole = team.find((m) => m.id === me?.id)?.role;
+  const isOwnerOrAdmin = currentUserRole === "OWNER" || currentUserRole === "ADMIN";
+
   const [createOpen, setCreateOpen] = React.useState(false);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [overColumn, setOverColumn] = React.useState<string | null>(null);
@@ -177,12 +203,38 @@ export function TasksBoard({
         method: "PATCH",
         body: JSON.stringify({ status }),
       }),
+    onMutate: ({ id, status }) => {
+      // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+      queryClient.cancelQueries({ queryKey: ["project", projectId] });
+
+      // Snapshot the previous value
+      const previousProject = queryClient.getQueryData<ProjectDetail>(["project", projectId]);
+
+      // Optimistically update to the new value
+      if (previousProject) {
+        queryClient.setQueryData<ProjectDetail>(["project", projectId], {
+          ...previousProject,
+          tasks: previousProject.tasks.map((t) =>
+            t.id === id ? { ...t, status } : t
+          ),
+        });
+      }
+
+      // Return a context object with the snapshotted value
+      return { previousProject };
+    },
+    onError: (e: Error, variables, context) => {
+      // Revert if error
+      if (context?.previousProject) {
+        queryClient.setQueryData(["project", projectId], context.previousProject);
+      }
+      toast.error(e.message);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["project", projectId] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       queryClient.invalidateQueries({ queryKey: ["activities"] });
     },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMutation = useMutation({
@@ -218,6 +270,10 @@ export function TasksBoard({
   }, [tasks]);
 
   function onDragStart(e: DragStartEvent) {
+    // Only allow starting drag if the user has permission to edit this task
+    const task = tasks.find((t) => t.id === e.active.id);
+    const canEdit = task && (isOwnerOrAdmin || task.creatorId === me?.id || task.assigneeId === me?.id);
+    if (!canEdit) return;
     setActiveId(String(e.active.id));
   }
 
@@ -274,6 +330,8 @@ export function TasksBoard({
               onStatusChange={handleStatusChange}
               onDelete={handleDelete}
               isOver={overColumn === status}
+              me={me}
+              isOwnerOrAdmin={isOwnerOrAdmin}
             />
           ))}
         </div>

@@ -11,16 +11,23 @@ import { io, type Socket } from "socket.io-client";
  * The gateway routes `/socket.io/?XTransformPort=3003` to the mini-service
  * on port 3003. The path is `/` per the gateway convention.
  */
-export function useRealtime(workspaceId: string | undefined | null): Socket | null {
+export function useRealtime(
+  workspaceId: string | undefined | null,
+  userId?: string | null
+): Socket | null {
   const [socket, setSocket] = React.useState<Socket | null>(null);
 
   React.useEffect(() => {
-    if (!workspaceId) return;
-    const isLocalhost = typeof window !== "undefined" && 
-      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    if (!workspaceId && !userId) return;
+    const isLocal = typeof window !== "undefined" && 
+      (window.location.hostname === "localhost" || 
+       window.location.hostname === "127.0.0.1" || 
+       window.location.port === "3000");
 
-    const socketUrl = isLocalhost ? "http://localhost:3003" : "/";
-    const socketOptions = isLocalhost
+    const socketUrl = isLocal
+      ? `${window.location.protocol}//${window.location.hostname}:3003`
+      : "/";
+    const socketOptions = isLocal
       ? { path: "/", transports: ["websocket", "polling"] }
       : {
           path: "/",
@@ -30,13 +37,18 @@ export function useRealtime(workspaceId: string | undefined | null): Socket | nu
 
     const s = io(socketUrl, socketOptions);
     s.on("connect", () => {
-      s.emit("join", `ws:${workspaceId}`);
+      if (workspaceId) {
+        s.emit("join", `ws:${workspaceId}`);
+      }
+      if (userId) {
+        s.emit("join", `user:${userId}`);
+      }
     });
     setSocket(s);
     return () => {
       s.disconnect();
     };
-  }, [workspaceId]);
+  }, [workspaceId, userId]);
 
   return socket;
 }

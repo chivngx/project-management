@@ -42,6 +42,7 @@ interface EditTaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trigger?: React.ReactNode;
+  canEdit?: boolean;
 }
 
 interface PatchPayload {
@@ -59,6 +60,7 @@ export function EditTaskDialog({
   open,
   onOpenChange,
   trigger,
+  canEdit = true,
 }: EditTaskDialogProps) {
   const queryClient = useQueryClient();
 
@@ -110,6 +112,13 @@ export function EditTaskDialog({
       toast.error("Tiêu đề tác vụ phải có ít nhất 2 ký tự");
       return;
     }
+    if (dueDate) {
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      if (dueDate < todayStr) {
+        toast.error("Ngày hạn không được trước ngày hiện tại");
+        return;
+      }
+    }
     patchMutation.mutate({
       title: title.trim(),
       description: description.trim() || null,
@@ -160,6 +169,12 @@ export function EditTaskDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {!canEdit && (
+            <div className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground border">
+              Bạn đang xem tác vụ ở chế độ <strong>chỉ đọc</strong> vì không phải là người tạo, người được giao, hoặc quản trị viên.
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="task-title">
               Tiêu đề <span className="text-destructive">*</span>
@@ -171,6 +186,7 @@ export function EditTaskDialog({
               required
               maxLength={120}
               autoFocus
+              disabled={!canEdit}
             />
           </div>
 
@@ -182,13 +198,14 @@ export function EditTaskDialog({
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               maxLength={1000}
+              disabled={!canEdit}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="task-status">Trạng thái</Label>
-              <Select value={status} onValueChange={setStatus}>
+              <Select value={status} onValueChange={setStatus} disabled={!canEdit}>
                 <SelectTrigger id="task-status" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -203,7 +220,7 @@ export function EditTaskDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="task-priority">Ưu tiên</Label>
-              <Select value={priority} onValueChange={setPriority}>
+              <Select value={priority} onValueChange={setPriority} disabled={!canEdit}>
                 <SelectTrigger id="task-priority" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -221,7 +238,7 @@ export function EditTaskDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="task-assignee">Người phụ trách</Label>
-              <Select value={assigneeId} onValueChange={setAssigneeId}>
+              <Select value={assigneeId} onValueChange={setAssigneeId} disabled={!canEdit}>
                 <SelectTrigger id="task-assignee" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -229,7 +246,7 @@ export function EditTaskDialog({
                   <SelectItem value="__none__">Chưa giao</SelectItem>
                   {members.map((m) => (
                     <SelectItem key={m.id} value={m.id}>
-                      {m.name}
+                      {m.name} ({m.username})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -242,6 +259,8 @@ export function EditTaskDialog({
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
+                min={new Date().toLocaleDateString("en-CA")}
+                disabled={!canEdit}
               />
             </div>
           </div>
@@ -257,7 +276,7 @@ export function EditTaskDialog({
               <span>
                 Được giao cho{" "}
                 <span className="font-medium text-foreground">
-                  {task.assignee.name}
+                  {task.assignee.name} ({task.assignee.username})
                 </span>
               </span>
             </div>
@@ -288,7 +307,7 @@ export function EditTaskDialog({
                   variant="outline"
                   size="sm"
                   onClick={handleCreateBranch}
-                  disabled={creatingBranch}
+                  disabled={creatingBranch || !canEdit}
                   className="w-full flex items-center gap-2 justify-center text-xs h-8"
                 >
                   {creatingBranch ? (
@@ -322,21 +341,34 @@ export function EditTaskDialog({
           )}
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Hủy
-            </Button>
-            <Button type="submit" disabled={patchMutation.isPending}>
-              {patchMutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Save className="size-4" />
-              )}
-              Lưu thay đổi
-            </Button>
+            {canEdit ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Hủy
+                </Button>
+                <Button type="submit" disabled={patchMutation.isPending}>
+                  {patchMutation.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Save className="size-4" />
+                  )}
+                  Lưu thay đổi
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                className="w-full sm:w-auto"
+              >
+                Đóng
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

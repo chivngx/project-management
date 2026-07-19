@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import crypto from "crypto";
-import { db } from "@/lib/db";
+import { TeamService } from "@/services/team.service";
 import { getApiContext, canAdmin, forbidden } from "@/lib/api-context";
 
 export async function GET() {
@@ -9,25 +8,8 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json([]);
 
-  const { data: rawMembers, error } = await db
-    .from("WorkspaceMember")
-    .select("*, user:User(*)")
-    .eq("workspaceId", workspace.id)
-    .order("joinedAt", { ascending: true });
-
-  if (error) throw error;
-  const members = (rawMembers || []) as any[];
-
-  return NextResponse.json(
-    members.map((m) => ({
-      id: m.user.id,
-      name: m.user.name,
-      email: m.user.email,
-      image: m.user.image,
-      role: m.role,
-      joinedAt: m.joinedAt,
-    }))
-  );
+  const members = await TeamService.listTeamMembers(workspace.id);
+  return NextResponse.json(members);
 }
 
 const inviteSchema = z.object({ email: z.string().email() });
@@ -47,65 +29,36 @@ export async function POST(req: Request) {
   if (!parsed.success)
     return NextResponse.json({ error: "Email không hợp lệ" }, { status: 400 });
 
-  const normalized = parsed.data.email.trim().toLowerCase();
-  const { data: target, error: targetErr } = await db
-    .from("User")
-    .select("id, name")
-    .eq("email", normalized)
-    .maybeSingle();
+  const email = parsed.data.email;
 
-  if (targetErr) throw targetErr;
-  if (!target) {
-    return NextResponse.json(
-      {
-        error:
-          "Chưa có tài khoản với email này. Họ cần đăng ký trước, sau đó bạn mới thêm được.",
-      },
-      { status: 404 }
+  try {
+    await TeamService.inviteTeamMember(
+      workspace.id,
+      { id: user.id, name: user.name },
+      membership?.role ?? "MEMBER",
+      email
     );
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    if (e.message === "FORBIDDEN") {
+      return forbidden("Chỉ quản trị viên mới được mời thành viên");
+    }
+    if (e.message === "USER_NOT_FOUND") {
+      return NextResponse.json(
+        {
+          error:
+            "Chưa có tài khoản với email này. Họ cần đăng ký trước, sau đó bạn mới thêm được.",
+        },
+        { status: 404 }
+      );
+    }
+    if (e.message === "ALREADY_MEMBER") {
+      return NextResponse.json(
+        { error: "Thành viên đã có trong workspace" },
+        { status: 409 }
+      );
+    }
+    console.error("Invite team member error:", e);
+    return NextResponse.json({ error: "Đã xảy ra lỗi hệ thống" }, { status: 500 });
   }
-
-  const { data: existing, error: existErr } = await db
-    .from("WorkspaceMember")
-    .select("id")
-    .eq("workspaceId", workspace.id)
-    .eq("userId", target.id)
-    .maybeSingle();
-
-  if (existErr) throw existErr;
-  if (existing) {
-    return NextResponse.json(
-      { error: "Thành viên đã có trong workspace" },
-      { status: 409 }
-    );
-  }
-
-  const newMemberId = crypto.randomUUID();
-  const { error: memberErr } = await db
-    .from("WorkspaceMember")
-    .insert({
-      id: newMemberId,
-      workspaceId: workspace.id,
-      userId: target.id,
-      role: "MEMBER",
-    });
-
-  if (memberErr) throw memberErr;
-
-  const newActivityId = crypto.randomUUID();
-  const { error: actErr } = await db
-    .from("Activity")
-    .insert({
-      id: newActivityId,
-      workspaceId: workspace.id,
-      userId: user.id,
-      action: "added_member",
-      entityType: "MEMBER",
-      entityId: target.id,
-      message: `${user.name ?? "Someone"} added ${target.name} to the workspace`,
-    });
-
-  if (actErr) throw actErr;
-
-  return NextResponse.json({ ok: true });
 }

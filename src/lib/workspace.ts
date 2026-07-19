@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { cache } from "react";
-import { db } from "@/lib/db";
+import { WorkspaceRepository } from "@/repositories/workspace.repository";
+
 export type Workspace = {
   id: string;
   name: string;
@@ -24,25 +25,18 @@ export const getActiveWorkspace = cache(
     const cookieStore = await cookies();
     const cookieId = cookieStore.get("workspaceId")?.value;
 
-    const { data: rawMemberships, error } = await db
-      .from("WorkspaceMember")
-      .select("*, workspace:Workspace(*)")
-      .eq("userId", userId)
-      .order("joinedAt", { ascending: true });
-
-    if (error) throw error;
-    const memberships = (rawMemberships || []) as any[];
+    const memberships = await WorkspaceRepository.findMembershipsByUserId(userId);
 
     if (memberships.length === 0) {
-      return { workspace: null, workspaces: [] as WorkspaceLite[] };
+      return { workspace: null, workspaces: [] };
     }
 
     const activeMember =
-      memberships.find((m) => m.workspaceId === cookieId) ?? memberships[0];
+      memberships.find((m: any) => m.workspaceId === cookieId) ?? memberships[0];
 
     return {
       workspace: activeMember.workspace,
-      workspaces: memberships.map((m) => ({
+      workspaces: memberships.map((m: any) => ({
         id: m.workspace.id,
         name: m.workspace.name,
         image: m.workspace.image,

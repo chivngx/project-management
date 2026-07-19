@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/db";
+import { WorkspaceRepository } from "@/repositories/workspace.repository";
 import { getApiContext } from "@/lib/api-context";
 import { setActiveWorkspaceCookie } from "@/lib/workspace";
 
@@ -28,14 +28,8 @@ export async function POST(req: Request) {
   }
 
   // Verify membership before setting the cookie.
-  const { data: membership, error } = await db
-    .from("WorkspaceMember")
-    .select("*")
-    .eq("workspaceId", parsed.data.workspaceId)
-    .eq("userId", user.id)
-    .maybeSingle();
+  const membership = await WorkspaceRepository.findMembership(parsed.data.workspaceId, user.id);
 
-  if (error) throw error;
   if (!membership) {
     return NextResponse.json(
       { error: "Bạn không thuộc workspace này" },

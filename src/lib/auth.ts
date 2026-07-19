@@ -1,7 +1,8 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
-import { db } from "@/lib/db";
+import GoogleProvider from "next-auth/providers/google";
+import { AuthService } from "@/services/auth.service";
+import { UserRepository } from "@/repositories/user.repository";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const authOptions: NextAuthOptions = {
@@ -13,6 +14,10 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    }),
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -32,45 +37,63 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Quá nhiều lần thử. Vui lòng thử lại sau 1 phút.");
         }
 
-        const { data: user, error } = await db
-          .from("User")
-          .select("id, name, email, image, passwordHash, tokenVersion")
-          .eq("email", email)
-          .maybeSingle();
-
-        if (error) {
-          throw new Error("Lỗi xác thực cơ sở dữ liệu");
-        }
+        const user = await AuthService.validateUserCredentials(email, credentials.password);
         if (!user) {
           throw new Error("Email hoặc mật khẩu không đúng");
         }
-        const valid = await bcrypt.compare(credentials.password, user.passwordHash);
-        if (!valid) {
-          throw new Error("Email hoặc mật khẩu không đúng");
-        }
+
         return {
           id: user.id,
           name: user.name,
+          username: user.username,
           email: user.email,
           image: user.image ?? undefined,
-          // Stash tokenVersion on the user object so the jwt callback can read it.
           tokenVersion: user.tokenVersion,
-        } as {
-          id: string;
-          name: string;
-          email: string;
-          image?: string;
-          tokenVersion: number;
         };
       },
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account, profile }: any) {
+      if (account?.provider === "google") {
+        if (!user.email) return false;
+
+        const email = user.email.trim().toLowerCase();
+        const existing = await UserRepository.findByEmail(email);
+
+        if (!existing) {
+          try {
+            const name = user.name || email.split("@")[0];
+            const result = await AuthService.registerGoogleUser(name, email, user.image);
+            user.id = result.user.id;
+            (user as any).tokenVersion = result.user.tokenVersion;
+            (user as any).image = result.user.image;
+            (user as any).username = result.user.username;
+          } catch (e) {
+            console.error("Failed to onboard Google user:", e);
+            return false;
+          }
+        } else {
+          user.id = existing.id;
+          (user as any).tokenVersion = existing.tokenVersion;
+          (user as any).image = existing.image;
+          (user as any).username = existing.username;
+
+          // If user didn't have an avatar in DB, but Google provides one, save it
+          if (!existing.image && user.image) {
+            await UserRepository.update(existing.id, { image: user.image });
+            (user as any).image = user.image;
+          }
+        }
+      }
+      return true;
+    },
+    async jwt({ token, user }: any) {
       if (user) {
         token.id = user.id ?? "";
         token.image = (user as { image?: string | null }).image ?? null;
         token.tokenVersion = (user as { tokenVersion?: number }).tokenVersion ?? 0;
+        token.username = (user as any).username ?? "";
       }
       // Periodically re-check tokenVersion against the DB so that a password
       // change or admin action (incrementing tokenVersion) invalidates the
@@ -80,11 +103,7 @@ export const authOptions: NextAuthOptions = {
         const lastCheck = (token as unknown as { lastVersionCheck?: number }).lastVersionCheck;
         const now = Date.now();
         if (!lastCheck || now - lastCheck > 5 * 60 * 1000) {
-          const { data: fresh } = await db
-            .from("User")
-            .select("tokenVersion")
-            .eq("id", token.id)
-            .maybeSingle();
+          const fresh = await UserRepository.findById(token.id);
           (token as unknown as { lastVersionCheck?: number }).lastVersionCheck = now;
           if (fresh && fresh.tokenVersion !== token.tokenVersion) {
             // Token revoked — return an empty token to invalidate the session.
@@ -94,7 +113,7 @@ export const authOptions: NextAuthOptions = {
       }
       return token;
     },
-    async session({ session, token }) {
+    async session({ session, token }: any) {
       // If the token was invalidated (empty id), don't attach a user.
       if (!token.id) {
         return { ...session, user: undefined } as unknown as typeof session;
@@ -102,9 +121,10 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.id;
         session.user.image = token.image ?? null;
+        session.user.username = token.username ?? "";
       }
       return session;
     },
-  },
+  } as any,
   secret: process.env.NEXTAUTH_SECRET,
 };
