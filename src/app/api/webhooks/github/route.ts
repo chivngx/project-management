@@ -11,10 +11,13 @@ export async function POST(req: Request) {
   }
 
   // Find project and its workspace details (to get workspace owner as default task creator)
-  const project = await db.project.findUnique({
-    where: { id: projectId },
-    include: { workspace: true },
-  });
+  const { data: project, error: projErr } = await db
+    .from("Project")
+    .select("*, workspace:Workspace(*)")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (projErr) throw projErr;
 
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
@@ -45,7 +48,7 @@ export async function POST(req: Request) {
   }
 
   const githubEvent = req.headers.get("x-github-event");
-  const creatorId = project.workspace.ownerId;
+  const creatorId = project.workspace?.ownerId;
 
   try {
     if (githubEvent === "issues") {
@@ -62,13 +65,22 @@ export async function POST(req: Request) {
       if (action === "opened") {
         // Create new task in ProjectFlow
         // First check if it already exists to prevent duplicate
-        const existing = await db.task.findFirst({
-          where: { projectId, externalProvider: "github", externalNumber: issueNumber },
-        });
+        const { data: existing, error: existErr } = await db
+          .from("Task")
+          .select("*")
+          .eq("projectId", projectId)
+          .eq("externalProvider", "github")
+          .eq("externalNumber", issueNumber)
+          .maybeSingle();
+
+        if (existErr) throw existErr;
 
         if (!existing) {
-          const newTask = await db.task.create({
-            data: {
+          const newTaskId = crypto.randomUUID();
+          const { data: newTask, error: newTaskErr } = await db
+            .from("Task")
+            .insert({
+              id: newTaskId,
               projectId,
               title: issue.title,
               description: issue.body || "",
@@ -79,77 +91,116 @@ export async function POST(req: Request) {
               externalNumber: issueNumber,
               externalUrl: issue.html_url,
               externalProvider: "github",
-            },
-          });
+            })
+            .select()
+            .single();
 
-          await db.activity.create({
-            data: {
+          if (newTaskErr) throw newTaskErr;
+
+          const newActivityId = crypto.randomUUID();
+          const { error: actErr } = await db
+            .from("Activity")
+            .insert({
+              id: newActivityId,
               workspaceId: project.workspaceId,
               action: "created_task",
               entityType: "TASK",
               entityId: newTask.id,
               message: `Webhook: Tác vụ "${issue.title}" được tạo tự động từ GitHub Issue #${issueNumber}`,
-            },
-          });
+            });
+
+          if (actErr) throw actErr;
         }
       } else if (action === "closed") {
         // Update task status to DONE
-        const task = await db.task.findFirst({
-          where: { projectId, externalProvider: "github", externalNumber: issueNumber },
-        });
+        const { data: task, error: findErr } = await db
+          .from("Task")
+          .select("*")
+          .eq("projectId", projectId)
+          .eq("externalProvider", "github")
+          .eq("externalNumber", issueNumber)
+          .maybeSingle();
+
+        if (findErr) throw findErr;
 
         if (task && task.status !== "DONE") {
-          await db.task.update({
-            where: { id: task.id },
-            data: { status: "DONE" },
-          });
+          const { error: updateErr } = await db
+            .from("Task")
+            .update({ status: "DONE" })
+            .eq("id", task.id);
 
-          await db.activity.create({
-            data: {
+          if (updateErr) throw updateErr;
+
+          const newActivityId = crypto.randomUUID();
+          const { error: actErr } = await db
+            .from("Activity")
+            .insert({
+              id: newActivityId,
               workspaceId: project.workspaceId,
               action: "completed_task",
               entityType: "TASK",
               entityId: task.id,
               message: `Webhook: Tác vụ "${task.title}" được hoàn thành (GitHub Issue #${issueNumber} đã đóng)`,
-            },
-          });
+            });
+
+          if (actErr) throw actErr;
         }
       } else if (action === "reopened") {
         // Update task status to IN_PROGRESS or TODO
-        const task = await db.task.findFirst({
-          where: { projectId, externalProvider: "github", externalNumber: issueNumber },
-        });
+        const { data: task, error: findErr } = await db
+          .from("Task")
+          .select("*")
+          .eq("projectId", projectId)
+          .eq("externalProvider", "github")
+          .eq("externalNumber", issueNumber)
+          .maybeSingle();
+
+        if (findErr) throw findErr;
 
         if (task && task.status === "DONE") {
-          await db.task.update({
-            where: { id: task.id },
-            data: { status: "IN_PROGRESS" },
-          });
+          const { error: updateErr } = await db
+            .from("Task")
+            .update({ status: "IN_PROGRESS" })
+            .eq("id", task.id);
 
-          await db.activity.create({
-            data: {
+          if (updateErr) throw updateErr;
+
+          const newActivityId = crypto.randomUUID();
+          const { error: actErr } = await db
+            .from("Activity")
+            .insert({
+              id: newActivityId,
               workspaceId: project.workspaceId,
               action: "created_task",
               entityType: "TASK",
               entityId: task.id,
               message: `Webhook: Tác vụ "${task.title}" được mở lại (GitHub Issue #${issueNumber} mở lại)`,
-            },
-          });
+            });
+
+          if (actErr) throw actErr;
         }
       } else if (action === "edited") {
         // Update task details
-        const task = await db.task.findFirst({
-          where: { projectId, externalProvider: "github", externalNumber: issueNumber },
-        });
+        const { data: task, error: findErr } = await db
+          .from("Task")
+          .select("*")
+          .eq("projectId", projectId)
+          .eq("externalProvider", "github")
+          .eq("externalNumber", issueNumber)
+          .maybeSingle();
+
+        if (findErr) throw findErr;
 
         if (task) {
-          await db.task.update({
-            where: { id: task.id },
-            data: {
+          const { error: updateErr } = await db
+            .from("Task")
+            .update({
               title: issue.title,
               description: issue.body || "",
-            },
-          });
+            })
+            .eq("id", task.id);
+
+          if (updateErr) throw updateErr;
         }
       }
     } else if (githubEvent === "pull_request") {
@@ -172,49 +223,73 @@ export async function POST(req: Request) {
         if (action === "opened") {
           // Transition matched tasks to REVIEW status
           for (const num of matchedNumbers) {
-            const task = await db.task.findFirst({
-              where: { projectId, externalProvider: "github", externalNumber: num },
-            });
+            const { data: task, error: findErr } = await db
+              .from("Task")
+              .select("*")
+              .eq("projectId", projectId)
+              .eq("externalProvider", "github")
+              .eq("externalNumber", num)
+              .maybeSingle();
+
+            if (findErr) throw findErr;
 
             if (task && task.status !== "REVIEW" && task.status !== "DONE") {
-              await db.task.update({
-                where: { id: task.id },
-                data: { status: "REVIEW" },
-              });
+              const { error: updateErr } = await db
+                .from("Task")
+                .update({ status: "REVIEW" })
+                .eq("id", task.id);
 
-              await db.activity.create({
-                data: {
+              if (updateErr) throw updateErr;
+
+              const newActivityId = crypto.randomUUID();
+              const { error: actErr } = await db
+                .from("Activity")
+                .insert({
+                  id: newActivityId,
                   workspaceId: project.workspaceId,
                   action: "updated_project",
                   entityType: "TASK",
                   entityId: task.id,
                   message: `Webhook: Tác vụ "${task.title}" được chuyển sang Đánh giá (PR #${pr.number} được mở)`,
-                },
-              });
+                });
+
+              if (actErr) throw actErr;
             }
           }
         } else if (action === "closed" && pr.merged) {
           // Transition matched tasks to DONE
           for (const num of matchedNumbers) {
-            const task = await db.task.findFirst({
-              where: { projectId, externalProvider: "github", externalNumber: num },
-            });
+            const { data: task, error: findErr } = await db
+              .from("Task")
+              .select("*")
+              .eq("projectId", projectId)
+              .eq("externalProvider", "github")
+              .eq("externalNumber", num)
+              .maybeSingle();
+
+            if (findErr) throw findErr;
 
             if (task && task.status !== "DONE") {
-              await db.task.update({
-                where: { id: task.id },
-                data: { status: "DONE" },
-              });
+              const { error: updateErr } = await db
+                .from("Task")
+                .update({ status: "DONE" })
+                .eq("id", task.id);
 
-              await db.activity.create({
-                data: {
+              if (updateErr) throw updateErr;
+
+              const newActivityId = crypto.randomUUID();
+              const { error: actErr } = await db
+                .from("Activity")
+                .insert({
+                  id: newActivityId,
                   workspaceId: project.workspaceId,
                   action: "completed_task",
                   entityType: "TASK",
                   entityId: task.id,
                   message: `Webhook: Tác vụ "${task.title}" đã hoàn thành (PR #${pr.number} đã được merge)`,
-                },
-              });
+                });
+
+              if (actErr) throw actErr;
             }
           }
         }

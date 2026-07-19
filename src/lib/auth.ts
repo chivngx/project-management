@@ -32,17 +32,15 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Quá nhiều lần thử. Vui lòng thử lại sau 1 phút.");
         }
 
-        const user = await db.user.findUnique({
-          where: { email },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-            passwordHash: true,
-            tokenVersion: true,
-          },
-        });
+        const { data: user, error } = await db
+          .from("User")
+          .select("id, name, email, image, passwordHash, tokenVersion")
+          .eq("email", email)
+          .maybeSingle();
+
+        if (error) {
+          throw new Error("Lỗi xác thực cơ sở dữ liệu");
+        }
         if (!user) {
           throw new Error("Email hoặc mật khẩu không đúng");
         }
@@ -82,10 +80,11 @@ export const authOptions: NextAuthOptions = {
         const lastCheck = (token as unknown as { lastVersionCheck?: number }).lastVersionCheck;
         const now = Date.now();
         if (!lastCheck || now - lastCheck > 5 * 60 * 1000) {
-          const fresh = await db.user.findUnique({
-            where: { id: token.id },
-            select: { tokenVersion: true },
-          });
+          const { data: fresh } = await db
+            .from("User")
+            .select("tokenVersion")
+            .eq("id", token.id)
+            .maybeSingle();
           (token as unknown as { lastVersionCheck?: number }).lastVersionCheck = now;
           if (fresh && fresh.tokenVersion !== token.tokenVersion) {
             // Token revoked — return an empty token to invalidate the session.

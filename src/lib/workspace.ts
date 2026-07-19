@@ -1,7 +1,14 @@
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { db } from "@/lib/db";
-import type { Workspace } from "@prisma/client";
+export type Workspace = {
+  id: string;
+  name: string;
+  image: string | null;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type WorkspaceLite = {
   id: string;
@@ -9,15 +16,6 @@ export type WorkspaceLite = {
   image: string | null;
 };
 
-/**
- * Resolve the user's active workspace (from the `workspaceId` cookie if they
- * are a member, otherwise their first membership). Also returns all the
- * workspaces they belong to, for the switcher.
- *
- * Wrapped in React.cache() so that within a single request (which may call
- * this from both the layout and several API routes) the DB query + cookie
- * read happen only once.
- */
 export const getActiveWorkspace = cache(
   async (userId: string): Promise<{
     workspace: Workspace | null;
@@ -26,11 +24,14 @@ export const getActiveWorkspace = cache(
     const cookieStore = await cookies();
     const cookieId = cookieStore.get("workspaceId")?.value;
 
-    const memberships = await db.workspaceMember.findMany({
-      where: { userId },
-      include: { workspace: true },
-      orderBy: { joinedAt: "asc" },
-    });
+    const { data: rawMemberships, error } = await db
+      .from("WorkspaceMember")
+      .select("*, workspace:Workspace(*)")
+      .eq("userId", userId)
+      .order("joinedAt", { ascending: true });
+
+    if (error) throw error;
+    const memberships = (rawMemberships || []) as any[];
 
     if (memberships.length === 0) {
       return { workspace: null, workspaces: [] as WorkspaceLite[] };

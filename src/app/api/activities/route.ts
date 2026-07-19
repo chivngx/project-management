@@ -7,12 +7,15 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json([]);
 
-  const activities = await db.activity.findMany({
-    where: { workspaceId: workspace.id },
-    orderBy: { createdAt: "desc" },
-    take: 12,
-    include: { user: { select: { name: true, image: true } } },
-  });
+  const { data: rawActivities, error } = await db
+    .from("Activity")
+    .select("*, user:User(name, image)")
+    .eq("workspaceId", workspace.id)
+    .order("createdAt", { ascending: false })
+    .limit(12);
+
+  if (error) throw error;
+  const activities = (rawActivities || []) as any[];
 
   return NextResponse.json(
     activities.map((a) => ({

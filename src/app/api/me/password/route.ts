@@ -30,10 +30,13 @@ export async function PATCH(req: Request) {
   const { currentPassword, newPassword } = parsed.data;
 
   // Fetch the current password hash.
-  const record = await db.user.findUnique({
-    where: { id: user.id },
-    select: { passwordHash: true },
-  });
+  const { data: record, error: findErr } = await db
+    .from("User")
+    .select("passwordHash, tokenVersion")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (findErr) throw findErr;
   if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const valid = await bcrypt.compare(currentPassword, record.passwordHash);
@@ -56,10 +59,15 @@ export async function PATCH(req: Request) {
   const passwordHash = await bcrypt.hash(newPassword, 12);
   // Increment tokenVersion to invalidate all existing sessions (JWT
   // revocation): the jwt callback checks tokenVersion against the DB.
-  await db.user.update({
-    where: { id: user.id },
-    data: { passwordHash, tokenVersion: { increment: 1 } },
-  });
+  const { error: updateErr } = await db
+    .from("User")
+    .update({
+      passwordHash,
+      tokenVersion: (record.tokenVersion || 0) + 1,
+    })
+    .eq("id", user.id);
+
+  if (updateErr) throw updateErr;
 
   return NextResponse.json({ ok: true });
 }

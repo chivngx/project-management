@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getApiContext, isOwner, forbidden } from "@/lib/api-context";
 
@@ -27,24 +28,46 @@ export async function DELETE(_req: Request, { params }: Params) {
     );
   }
 
-  await db.$transaction([
-    db.workspaceMember.delete({
-      where: { workspaceId_userId: { workspaceId: workspace.id, userId: user.id } },
-    }),
-    db.projectMember.deleteMany({
-      where: { userId: user.id, project: { workspaceId: workspace.id } },
-    }),
-    db.activity.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
-        action: "left_workspace",
-        entityType: "WORKSPACE",
-        entityId: workspace.id,
-        message: `${user.name ?? "Someone"} left the workspace`,
-      },
-    }),
-  ]);
+  const { data: projects, error: projErr } = await db
+    .from("Project")
+    .select("id")
+    .eq("workspaceId", workspace.id);
+
+  if (projErr) throw projErr;
+  const projectIds = (projects || []).map((p) => p.id);
+
+  if (projectIds.length > 0) {
+    const { error: pmErr } = await db
+      .from("ProjectMember")
+      .delete()
+      .eq("userId", user.id)
+      .in("projectId", projectIds);
+
+    if (pmErr) throw pmErr;
+  }
+
+  const { error: memberErr } = await db
+    .from("WorkspaceMember")
+    .delete()
+    .eq("workspaceId", workspace.id)
+    .eq("userId", user.id);
+
+  if (memberErr) throw memberErr;
+
+  const newActivityId = crypto.randomUUID();
+  const { error: actErr } = await db
+    .from("Activity")
+    .insert({
+      id: newActivityId,
+      workspaceId: workspace.id,
+      userId: user.id,
+      action: "left_workspace",
+      entityType: "WORKSPACE",
+      entityId: workspace.id,
+      message: `${user.name ?? "Someone"} left the workspace`,
+    });
+
+  if (actErr) throw actErr;
 
   return NextResponse.json({ ok: true });
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getApiContext } from "@/lib/api-context";
 import { decrypt } from "@/lib/encryption";
@@ -22,12 +23,15 @@ export async function POST(req: Request, { params }: Params) {
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const { id } = await params;
-  const task = await db.task.findFirst({
-    where: { id, project: { workspaceId: workspace.id } },
-    include: { gitIntegration: true },
-  });
+  const { data: task, error: findErr } = await db
+    .from("Task")
+    .select("*, project:Project(*), gitIntegration:GitIntegration(*)")
+    .eq("id", id)
+    .maybeSingle();
 
-  if (!task) {
+  if (findErr) throw findErr;
+
+  if (!task || task.project?.workspaceId !== workspace.id) {
     return NextResponse.json({ error: "Không tìm thấy tác vụ" }, { status: 404 });
   }
 
@@ -120,16 +124,20 @@ export async function POST(req: Request, { params }: Params) {
     }
 
     // Log Activity
-    await db.activity.create({
-      data: {
+    const newActivityId = crypto.randomUUID();
+    const { error: actErr } = await db
+      .from("Activity")
+      .insert({
+        id: newActivityId,
         workspaceId: workspace.id,
         userId: user.id,
         action: "updated_project",
         entityType: "TASK",
         entityId: task.id,
         message: `${user.name || "Someone"} đã tạo nhánh Git '${branchName}' cho tác vụ "${task.title}"`,
-      },
-    });
+      });
+
+    if (actErr) throw actErr;
 
     return NextResponse.json({ ok: true, branchName });
   } catch (err: any) {

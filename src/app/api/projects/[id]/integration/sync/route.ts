@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getApiContext } from "@/lib/api-context";
 import { decrypt } from "@/lib/encryption";
@@ -16,9 +17,28 @@ export async function GET(req: Request, { params }: Params) {
   const integrationId = searchParams.get("integrationId");
 
   // Find the selected integration (or default to the first one)
-  const integration = integrationId 
-    ? await db.gitIntegration.findFirst({ where: { id: integrationId, projectId } })
-    : await db.gitIntegration.findFirst({ where: { projectId } });
+  let integration: any = null;
+  if (integrationId) {
+    const { data, error } = await db
+      .from("GitIntegration")
+      .select("*")
+      .eq("id", integrationId)
+      .eq("projectId", projectId)
+      .maybeSingle();
+
+    if (error) throw error;
+    integration = data;
+  } else {
+    const { data, error } = await db
+      .from("GitIntegration")
+      .select("*")
+      .eq("projectId", projectId)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    integration = data;
+  }
 
   if (!integration) {
     return NextResponse.json({ error: "Dự án chưa cấu hình tích hợp Git" }, { status: 400 });
@@ -31,17 +51,15 @@ export async function GET(req: Request, { params }: Params) {
     const name = integration.name;
 
     // Get existing linked tasks for this specific integration
-    const existingTasks = await db.task.findMany({
-      where: {
-        projectId,
-        gitIntegrationId: integration.id,
-        externalNumber: { not: null },
-      },
-      select: {
-        externalNumber: true,
-      },
-    });
-    const linkedNumbers = new Set(existingTasks.map((t) => t.externalNumber));
+    const { data: existingTasks, error: tasksErr } = await db
+      .from("Task")
+      .select("externalNumber")
+      .eq("projectId", projectId)
+      .eq("gitIntegrationId", integration.id)
+      .not("externalNumber", "is", null);
+
+    if (tasksErr) throw tasksErr;
+    const linkedNumbers = new Set((existingTasks || []).map((t: any) => t.externalNumber));
 
     let externalIssues: any[] = [];
 
@@ -126,9 +144,28 @@ export async function POST(req: Request, { params }: Params) {
   const { integrationId, issues: issuesToImport } = parsed.data;
 
   // Find the selected integration (or default to the first one)
-  const integration = integrationId 
-    ? await db.gitIntegration.findFirst({ where: { id: integrationId, projectId } })
-    : await db.gitIntegration.findFirst({ where: { projectId } });
+  let integration: any = null;
+  if (integrationId) {
+    const { data, error } = await db
+      .from("GitIntegration")
+      .select("*")
+      .eq("id", integrationId)
+      .eq("projectId", projectId)
+      .maybeSingle();
+
+    if (error) throw error;
+    integration = data;
+  } else {
+    const { data, error } = await db
+      .from("GitIntegration")
+      .select("*")
+      .eq("projectId", projectId)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    integration = data;
+  }
 
   if (!integration) {
     return NextResponse.json({ error: "Dự án chưa cấu hình tích hợp Git" }, { status: 400 });
@@ -147,17 +184,22 @@ export async function POST(req: Request, { params }: Params) {
     if (issuesToImport && issuesToImport.length > 0) {
       for (const issue of issuesToImport) {
         // Double check if already imported
-        const exists = await db.task.findFirst({
-          where: {
-            projectId,
-            gitIntegrationId: integration.id,
-            externalNumber: issue.number,
-          },
-        });
+        const { data: exists, error: existErr } = await db
+          .from("Task")
+          .select("id")
+          .eq("projectId", projectId)
+          .eq("gitIntegrationId", integration.id)
+          .eq("externalNumber", issue.number)
+          .maybeSingle();
+
+        if (existErr) throw existErr;
 
         if (!exists) {
-          await db.task.create({
-            data: {
+          const newTaskId = crypto.randomUUID();
+          const { error: insertErr } = await db
+            .from("Task")
+            .insert({
+              id: newTaskId,
               projectId,
               title: issue.title,
               description: issue.description || "",
@@ -169,21 +211,24 @@ export async function POST(req: Request, { params }: Params) {
               externalUrl: issue.url,
               externalProvider: provider,
               gitIntegrationId: integration.id,
-            },
-          });
+            });
+
+          if (insertErr) throw insertErr;
           importedCount++;
         }
       }
     }
 
     // Phase 2: Status Synchronization for existing linked tasks
-    const linkedTasks = await db.task.findMany({
-      where: {
-        projectId,
-        gitIntegrationId: integration.id,
-        externalNumber: { not: null },
-      },
-    });
+    const { data: linkedTasksRaw, error: linkedErr } = await db
+      .from("Task")
+      .select("*")
+      .eq("projectId", projectId)
+      .eq("gitIntegrationId", integration.id)
+      .not("externalNumber", "is", null);
+
+    if (linkedErr) throw linkedErr;
+    const linkedTasks = linkedTasksRaw || [];
 
     if (linkedTasks.length > 0) {
       if (provider === "github") {
@@ -204,10 +249,12 @@ export async function POST(req: Request, { params }: Params) {
                 if (remoteState) {
                   const targetStatus = remoteState === "closed" ? "DONE" : task.status === "DONE" ? "TODO" : task.status;
                   if (task.status !== targetStatus) {
-                    await db.task.update({
-                      where: { id: task.id },
-                      data: { status: targetStatus },
-                    });
+                    const { error: updateTaskErr } = await db
+                      .from("Task")
+                      .update({ status: targetStatus })
+                      .eq("id", task.id);
+
+                    if (updateTaskErr) throw updateTaskErr;
                     updatedCount++;
                   }
                 }
@@ -234,10 +281,12 @@ export async function POST(req: Request, { params }: Params) {
                 if (remoteState) {
                   const targetStatus = remoteState === "closed" ? "DONE" : task.status === "DONE" ? "TODO" : task.status;
                   if (task.status !== targetStatus) {
-                    await db.task.update({
-                      where: { id: task.id },
-                      data: { status: targetStatus },
-                    });
+                    const { error: updateTaskErr } = await db
+                      .from("Task")
+                      .update({ status: targetStatus })
+                      .eq("id", task.id);
+
+                    if (updateTaskErr) throw updateTaskErr;
                     updatedCount++;
                   }
                 }
@@ -249,16 +298,20 @@ export async function POST(req: Request, { params }: Params) {
     }
 
     if (importedCount > 0 || updatedCount > 0) {
-      await db.activity.create({
-        data: {
+      const newActivityId = crypto.randomUUID();
+      const { error: actErr } = await db
+        .from("Activity")
+        .insert({
+          id: newActivityId,
           workspaceId: workspace.id,
           userId: user.id,
           action: "updated_project",
           entityType: "PROJECT",
           entityId: projectId,
           message: `${user.name || "Someone"} đồng bộ Git (${owner}/${name}): đã import ${importedCount} tasks, cập nhật ${updatedCount} tasks.`,
-        },
-      });
+        });
+
+      if (actErr) throw actErr;
     }
 
     return NextResponse.json({

@@ -28,14 +28,14 @@ export async function POST(req: Request) {
   }
 
   // Verify membership before setting the cookie.
-  const membership = await db.workspaceMember.findUnique({
-    where: {
-      workspaceId_userId: {
-        workspaceId: parsed.data.workspaceId,
-        userId: user.id,
-      },
-    },
-  });
+  const { data: membership, error } = await db
+    .from("WorkspaceMember")
+    .select("*")
+    .eq("workspaceId", parsed.data.workspaceId)
+    .eq("userId", user.id)
+    .maybeSingle();
+
+  if (error) throw error;
   if (!membership) {
     return NextResponse.json(
       { error: "Bạn không thuộc workspace này" },

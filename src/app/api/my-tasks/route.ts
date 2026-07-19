@@ -2,15 +2,18 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getApiContext } from "@/lib/api-context";
 
-type TaskWithProject = Awaited<
-  ReturnType<
-    typeof db.task.findMany<{
-      include: { project: { select: { id: true; name: true } } };
-    }>
-  >
->[number];
+type TaskWithProject = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  dueDate: string | null;
+  createdAt: string;
+  project: { id: string; name: string };
+};
 
-function mapTask(t: TaskWithProject) {
+function mapTask(t: any): TaskWithProject {
   return {
     id: t.id,
     title: t.title,
@@ -19,7 +22,7 @@ function mapTask(t: TaskWithProject) {
     priority: t.priority,
     dueDate: t.dueDate,
     createdAt: t.createdAt,
-    project: { id: t.project.id, name: t.project.name },
+    project: { id: t.project?.id, name: t.project?.name },
   };
 }
 
@@ -31,16 +34,28 @@ export async function GET() {
   if (!workspace)
     return NextResponse.json({ TODO: [], IN_PROGRESS: [], REVIEW: [], DONE: [] });
 
-  const tasks = await db.task.findMany({
-    where: {
-      assigneeId: user.id,
-      project: { workspaceId: workspace.id },
-    },
-    include: {
-      project: { select: { id: true, name: true } },
-    },
-    orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
-  });
+  const { data: projects, error: projErr } = await db
+    .from("Project")
+    .select("id")
+    .eq("workspaceId", workspace.id);
+
+  if (projErr) throw projErr;
+  const projectIds = (projects || []).map((p) => p.id);
+
+  if (projectIds.length === 0) {
+    return NextResponse.json({ TODO: [], IN_PROGRESS: [], REVIEW: [], DONE: [] });
+  }
+
+  const { data: rawTasks, error: tasksErr } = await db
+    .from("Task")
+    .select("*, project:Project(id, name)")
+    .eq("assigneeId", user.id)
+    .in("projectId", projectIds)
+    .order("dueDate", { ascending: true })
+    .order("createdAt", { ascending: false });
+
+  if (tasksErr) throw tasksErr;
+  const tasks = (rawTasks || []) as any[];
 
   const grouped: Record<string, TaskWithProject[]> = {
     TODO: [],
@@ -50,13 +65,13 @@ export async function GET() {
   };
   for (const t of tasks) {
     const bucket = grouped[t.status] ?? grouped.TODO;
-    bucket.push(t);
+    bucket.push(mapTask(t));
   }
 
   return NextResponse.json({
-    TODO: grouped.TODO.map(mapTask),
-    IN_PROGRESS: grouped.IN_PROGRESS.map(mapTask),
-    REVIEW: grouped.REVIEW.map(mapTask),
-    DONE: grouped.DONE.map(mapTask),
+    TODO: grouped.TODO,
+    IN_PROGRESS: grouped.IN_PROGRESS,
+    REVIEW: grouped.REVIEW,
+    DONE: grouped.DONE,
   });
 }

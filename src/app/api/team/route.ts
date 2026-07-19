@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getApiContext, canAdmin, forbidden } from "@/lib/api-context";
 
@@ -8,11 +9,14 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json([]);
 
-  const members = await db.workspaceMember.findMany({
-    where: { workspaceId: workspace.id },
-    include: { user: true },
-    orderBy: { joinedAt: "asc" },
-  });
+  const { data: rawMembers, error } = await db
+    .from("WorkspaceMember")
+    .select("*, user:User(*)")
+    .eq("workspaceId", workspace.id)
+    .order("joinedAt", { ascending: true });
+
+  if (error) throw error;
+  const members = (rawMembers || []) as any[];
 
   return NextResponse.json(
     members.map((m) => ({
@@ -44,7 +48,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Email không hợp lệ" }, { status: 400 });
 
   const normalized = parsed.data.email.trim().toLowerCase();
-  const target = await db.user.findUnique({ where: { email: normalized } });
+  const { data: target, error: targetErr } = await db
+    .from("User")
+    .select("id, name")
+    .eq("email", normalized)
+    .maybeSingle();
+
+  if (targetErr) throw targetErr;
   if (!target) {
     return NextResponse.json(
       {
@@ -55,9 +65,14 @@ export async function POST(req: Request) {
     );
   }
 
-  const existing = await db.workspaceMember.findUnique({
-    where: { workspaceId_userId: { workspaceId: workspace.id, userId: target.id } },
-  });
+  const { data: existing, error: existErr } = await db
+    .from("WorkspaceMember")
+    .select("id")
+    .eq("workspaceId", workspace.id)
+    .eq("userId", target.id)
+    .maybeSingle();
+
+  if (existErr) throw existErr;
   if (existing) {
     return NextResponse.json(
       { error: "Thành viên đã có trong workspace" },
@@ -65,21 +80,32 @@ export async function POST(req: Request) {
     );
   }
 
-  await db.$transaction([
-    db.workspaceMember.create({
-      data: { workspaceId: workspace.id, userId: target.id, role: "MEMBER" },
-    }),
-    db.activity.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
-        action: "added_member",
-        entityType: "MEMBER",
-        entityId: target.id,
-        message: `${user.name ?? "Someone"} added ${target.name} to the workspace`,
-      },
-    }),
-  ]);
+  const newMemberId = crypto.randomUUID();
+  const { error: memberErr } = await db
+    .from("WorkspaceMember")
+    .insert({
+      id: newMemberId,
+      workspaceId: workspace.id,
+      userId: target.id,
+      role: "MEMBER",
+    });
+
+  if (memberErr) throw memberErr;
+
+  const newActivityId = crypto.randomUUID();
+  const { error: actErr } = await db
+    .from("Activity")
+    .insert({
+      id: newActivityId,
+      workspaceId: workspace.id,
+      userId: user.id,
+      action: "added_member",
+      entityType: "MEMBER",
+      entityId: target.id,
+      message: `${user.name ?? "Someone"} added ${target.name} to the workspace`,
+    });
+
+  if (actErr) throw actErr;
 
   return NextResponse.json({ ok: true });
 }

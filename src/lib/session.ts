@@ -37,11 +37,14 @@ export async function requireUser(): Promise<SessionUser> {
 export async function requireUserWithWorkspace() {
   const user = await requireUser();
 
-  const memberships = await db.workspaceMember.findMany({
-    where: { userId: user.id },
-    include: { workspace: true },
-    orderBy: { joinedAt: "asc" },
-  });
+  const { data: rawMemberships, error } = await db
+    .from("WorkspaceMember")
+    .select("*, workspace:Workspace(*)")
+    .eq("userId", user.id)
+    .order("joinedAt", { ascending: true });
+
+  if (error) throw error;
+  const memberships = (rawMemberships || []) as any[];
 
   if (memberships.length === 0) {
     return { user, workspace: null, workspaces: [] as typeof memberships };

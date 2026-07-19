@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getApiContext } from "@/lib/api-context";
 import { decrypt } from "@/lib/encryption";
@@ -14,19 +15,25 @@ export async function GET(_req: Request, { params }: Params) {
 
   const { id } = await params;
   // Verify the task belongs to the active workspace.
-  const task = await db.task.findFirst({
-    where: { id, project: { workspaceId: workspace.id } },
-    select: { id: true },
-  });
-  if (!task) return NextResponse.json({ error: "Không tìm thấy task" }, { status: 404 });
+  const { data: task, error: findErr } = await db
+    .from("Task")
+    .select("*, project:Project(*)")
+    .eq("id", id)
+    .maybeSingle();
 
-  const comments = await db.comment.findMany({
-    where: { taskId: id },
-    include: {
-      user: { select: { id: true, name: true, email: true, image: true } },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  if (findErr) throw findErr;
+  if (!task || task.project?.workspaceId !== workspace.id) {
+    return NextResponse.json({ error: "Không tìm thấy task" }, { status: 404 });
+  }
+
+  const { data: commentsRaw, error: commentsErr } = await db
+    .from("Comment")
+    .select("*, user:User(id, name, email, image)")
+    .eq("taskId", id)
+    .order("createdAt", { ascending: true });
+
+  if (commentsErr) throw commentsErr;
+  const comments = commentsRaw || [];
 
   return NextResponse.json(
     comments.map((c) => ({
@@ -36,10 +43,10 @@ export async function GET(_req: Request, { params }: Params) {
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
       user: {
-        id: c.user.id,
-        name: c.user.name,
-        email: c.user.email,
-        image: c.user.image,
+        id: c.user?.id,
+        name: c.user?.name,
+        email: c.user?.email,
+        image: c.user?.image,
       },
     }))
   );
@@ -56,20 +63,16 @@ export async function POST(req: Request, { params }: Params) {
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const { id } = await params;
-  const task = await db.task.findFirst({
-    where: { id, project: { workspaceId: workspace.id } },
-    select: { 
-      id: true, 
-      title: true, 
-      assigneeId: true, 
-      creatorId: true, 
-      projectId: true,
-      externalNumber: true,
-      externalProvider: true,
-      gitIntegration: true,
-    },
-  });
-  if (!task) return NextResponse.json({ error: "Không tìm thấy task" }, { status: 404 });
+  const { data: task, error: findErr } = await db
+    .from("Task")
+    .select("*, project:Project(*), gitIntegration:GitIntegration(*)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (findErr) throw findErr;
+  if (!task || task.project?.workspaceId !== workspace.id) {
+    return NextResponse.json({ error: "Không tìm thấy task" }, { status: 404 });
+  }
 
   const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success)
@@ -78,31 +81,39 @@ export async function POST(req: Request, { params }: Params) {
       { status: 400 }
     );
 
-  const comment = await db.comment.create({
-    data: {
+  const newCommentId = crypto.randomUUID();
+  const { data: comment, error: createCommentErr } = await db
+    .from("Comment")
+    .insert({
+      id: newCommentId,
       taskId: id,
       userId: user.id,
       body: parsed.data.body.trim(),
-    },
-    include: {
-      user: { select: { id: true, name: true, email: true, image: true } },
-    },
-  });
+    })
+    .select("*, user:User(id, name, email, image)")
+    .single();
+
+  if (createCommentErr) throw createCommentErr;
 
   // Notify the task's assignee and creator (excluding the commenter).
   const recipients = new Set<string>();
   if (task.assigneeId && task.assigneeId !== user.id) recipients.add(task.assigneeId);
   if (task.creatorId && task.creatorId !== user.id) recipients.add(task.creatorId);
   if (recipients.size > 0) {
-    await db.notification.createMany({
-      data: Array.from(recipients).map((recipientId) => ({
-        userId: recipientId,
-        workspaceId: workspace.id,
-        type: "task_commented",
-        message: `${user.name ?? "Someone"} đã bình luận về tác vụ "${task.title}"`,
-        link: `/projects/${task.projectId}`,
-      })),
-    });
+    const notificationsToInsert = Array.from(recipients).map((recipientId) => ({
+      id: crypto.randomUUID(),
+      userId: recipientId,
+      workspaceId: workspace.id,
+      type: "task_commented",
+      message: `${user.name ?? "Someone"} đã bình luận về tác vụ "${task.title}"`,
+      link: `/projects/${task.projectId}`,
+    }));
+
+    const { error: notifErr } = await db
+      .from("Notification")
+      .insert(notificationsToInsert);
+
+    if (notifErr) throw notifErr;
   }
 
   // TWO-WAY SYNC: Post comment to GitHub / GitLab issue if linked
@@ -155,10 +166,10 @@ export async function POST(req: Request, { params }: Params) {
     createdAt: comment.createdAt,
     updatedAt: comment.updatedAt,
     user: {
-      id: comment.user.id,
-      name: comment.user.name,
-      email: comment.user.email,
-      image: comment.user.image,
+      id: comment.user?.id,
+      name: comment.user?.name,
+      email: comment.user?.email,
+      image: comment.user?.image,
     },
   });
 }

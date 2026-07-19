@@ -10,10 +10,13 @@ export async function PATCH(_req: Request, { params }: Params) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  await db.notification.updateMany({
-    where: { id, userId: user.id },
-    data: { read: true },
-  });
+  const { error } = await db
+    .from("Notification")
+    .update({ read: true })
+    .eq("id", id)
+    .eq("userId", user.id);
+
+  if (error) throw error;
 
   return NextResponse.json({ ok: true });
 }

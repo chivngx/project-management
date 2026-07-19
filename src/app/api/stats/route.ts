@@ -23,122 +23,111 @@ export async function GET() {
       tasksByStatus: [],
     });
 
-  // Use groupBy + count instead of loading all tasks into memory.
-  const [projectCount, projectStatusGroups, taskStatusGroups, memberCount, overdueCount] =
-    await Promise.all([
-      db.project.count({ where: { workspaceId: workspace.id } }),
-      db.project.groupBy({
-        by: ["status"],
-        where: { workspaceId: workspace.id },
-        _count: { _all: true },
-      }),
-      db.task.groupBy({
-        by: ["status"],
-        where: { project: { workspaceId: workspace.id } },
-        _count: { _all: true },
-      }),
-      db.workspaceMember.count({ where: { workspaceId: workspace.id } }),
-      db.task.count({
-        where: {
-          project: { workspaceId: workspace.id },
-          dueDate: { lt: new Date() },
-          status: { not: "DONE" },
-        },
-      }),
-    ]);
+  // 1. Fetch all projects of the workspace to compute project totals and status groups
+  const { data: projects, error: projErr } = await db
+    .from("Project")
+    .select("id, name, status, priority, dueDate, startDate, createdAt")
+    .eq("workspaceId", workspace.id);
 
-  const statusCount = (status: string) =>
-    taskStatusGroups.find((g) => g.status === status)?._count._all ?? 0;
+  if (projErr) throw projErr;
+  const projectCount = projects?.length || 0;
+  const projectIds = (projects || []).map((p) => p.id);
 
-  const todoTasks = statusCount("TODO");
-  const inProgressTasks = statusCount("IN_PROGRESS");
-  const reviewTasks = statusCount("REVIEW");
-  const doneTasks = statusCount("DONE");
-  const totalTasks = todoTasks + inProgressTasks + reviewTasks + doneTasks;
+  const activeProjects = (projects || []).filter((p) => p.status === "ACTIVE").length;
+  const completedProjects = (projects || []).filter((p) => p.status === "COMPLETED").length;
 
-  const activeProjects =
-    projectStatusGroups.find((g) => g.status === "ACTIVE")?._count._all ?? 0;
-  const completedProjects =
-    projectStatusGroups.find((g) => g.status === "COMPLETED")?._count._all ?? 0;
+  // 2. Fetch all tasks of the workspace projects to compute task totals, status groups, and overdue count
+  let tasks: any[] = [];
+  if (projectIds.length > 0) {
+    const { data: tasksData, error: tasksErr } = await db
+      .from("Task")
+      .select("status, dueDate")
+      .in("projectId", projectIds);
 
-  // Recent projects: fetch top 4 by createdAt, then compute done counts in
-  // a single groupBy (avoids the N+1 of one query per project).
-  const recentProjectsRaw = await db.project.findMany({
-    where: { workspaceId: workspace.id },
-    select: {
-      id: true,
-      name: true,
-      status: true,
-      priority: true,
-      dueDate: true,
-      startDate: true,
-      members: { select: { userId: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 4,
-  });
+    if (tasksErr) throw tasksErr;
+    tasks = tasksData || [];
+  }
 
-  const recentIds = recentProjectsRaw.map((p) => p.id);
-  const [taskCountsByProject, doneCountsByProject] = await Promise.all([
-    db.task.groupBy({
-      by: ["projectId"],
-      where: { projectId: { in: recentIds } },
-      _count: { _all: true },
-    }),
-    db.task.groupBy({
-      by: ["projectId"],
-      where: { projectId: { in: recentIds }, status: "DONE" },
-      _count: { _all: true },
-    }),
-  ]);
+  const todoTasks = tasks.filter((t) => t.status === "TODO").length;
+  const inProgressTasks = tasks.filter((t) => t.status === "IN_PROGRESS").length;
+  const reviewTasks = tasks.filter((t) => t.status === "REVIEW").length;
+  const doneTasks = tasks.filter((t) => t.status === "DONE").length;
+  const totalTasks = tasks.length;
 
-  const recentProjects = recentProjectsRaw.map((p) => {
-    const total =
-      taskCountsByProject.find((g) => g.projectId === p.id)?._count._all ?? 0;
-    const done =
-      doneCountsByProject.find((g) => g.projectId === p.id)?._count._all ?? 0;
+  const nowStr = new Date().toISOString();
+  const overdueCount = tasks.filter(
+    (t) => t.status !== "DONE" && t.dueDate && t.dueDate < nowStr
+  ).length;
+
+  // 3. Fetch workspace members count
+  const { count: memberCount, error: memberErr } = await db
+    .from("WorkspaceMember")
+    .select("*", { count: "exact", head: true })
+    .eq("workspaceId", workspace.id);
+
+  if (memberErr) throw memberErr;
+
+  // 4. Recent projects: fetch top 4 by createdAt, then select their members
+  const { data: recentProjectsRaw, error: recentErr } = await db
+    .from("Project")
+    .select("id, name, status, priority, dueDate, startDate, members:ProjectMember(userId)")
+    .eq("workspaceId", workspace.id)
+    .order("createdAt", { ascending: false })
+    .limit(4);
+
+  if (recentErr) throw recentErr;
+
+  const recentIds = (recentProjectsRaw || []).map((p) => p.id);
+  let recentTasks: any[] = [];
+  if (recentIds.length > 0) {
+    const { data: recentTasksRaw, error: recentTasksErr } = await db
+      .from("Task")
+      .select("projectId, status")
+      .in("projectId", recentIds);
+
+    if (recentTasksErr) throw recentTasksErr;
+    recentTasks = recentTasksRaw || [];
+  }
+
+  const recentProjects = (recentProjectsRaw || []).map((p) => {
+    const total = recentTasks.filter((t) => t.projectId === p.id).length;
+    const done = recentTasks.filter((t) => t.projectId === p.id && t.status === "DONE").length;
     return {
       id: p.id,
       name: p.name,
       status: p.status,
       priority: p.priority,
       dueDate: p.dueDate,
-      memberCount: p.members.length,
+      memberCount: p.members?.length || 0,
       taskCount: total,
       doneCount: done,
       progress: total ? Math.round((done / total) * 100) : 0,
     };
   });
 
-  // My tasks: assigned to current user, not done, sorted by due date, top 6.
-  const myTasksRaw = await db.task.findMany({
-    where: {
-      assigneeId: user.id,
-      status: { not: "DONE" },
-      project: { workspaceId: workspace.id },
-    },
-    select: {
-      id: true,
-      title: true,
-      status: true,
-      priority: true,
-      dueDate: true,
-      projectId: true,
-      project: { select: { name: true } },
-    },
-    orderBy: { dueDate: "asc" },
-    take: 6,
-  });
+  // 5. My tasks: assigned to current user, not done, sorted by due date, top 6
+  let myTasks: any[] = [];
+  if (projectIds.length > 0) {
+    const { data: myTasksRaw, error: myTasksErr } = await db
+      .from("Task")
+      .select("id, title, status, priority, dueDate, projectId, project:Project(name)")
+      .eq("assigneeId", user.id)
+      .neq("status", "DONE")
+      .in("projectId", projectIds)
+      .order("dueDate", { ascending: true })
+      .limit(6);
 
-  const myTasks = myTasksRaw.map((t) => ({
-    id: t.id,
-    title: t.title,
-    status: t.status,
-    priority: t.priority,
-    dueDate: t.dueDate,
-    projectName: t.project.name,
-    projectId: t.projectId,
-  }));
+    if (myTasksErr) throw myTasksErr;
+    myTasks = (myTasksRaw || []).map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      priority: t.priority,
+      dueDate: t.dueDate,
+      projectName: (t.project as any)?.name ?? null,
+      projectId: t.projectId,
+    }));
+  }
 
   const tasksByStatus = [
     { name: "To Do", value: todoTasks, key: "TODO" },
@@ -156,7 +145,7 @@ export async function GET() {
       doneTasks,
       inProgressTasks,
       overdueTasks: overdueCount,
-      members: memberCount,
+      members: memberCount || 0,
     },
     recentProjects,
     myTasks,

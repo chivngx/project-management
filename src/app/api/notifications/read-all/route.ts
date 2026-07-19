@@ -8,10 +8,14 @@ export async function PATCH() {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json({ ok: true });
 
-  await db.notification.updateMany({
-    where: { userId: user.id, workspaceId: workspace.id, read: false },
-    data: { read: true },
-  });
+  const { error } = await db
+    .from("Notification")
+    .update({ read: true })
+    .eq("userId", user.id)
+    .eq("workspaceId", workspace.id)
+    .eq("read", false);
+
+  if (error) throw error;
 
   return NextResponse.json({ ok: true });
 }

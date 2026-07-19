@@ -2,17 +2,20 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getActiveWorkspace } from "@/lib/workspace";
 import { db } from "@/lib/db";
-import type { WorkspaceMember } from "@prisma/client";
+
+export type WorkspaceMember = {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  role: string;
+  joinedAt: string;
+};
 
 export type ApiUser = { id: string; name?: string | null; email?: string | null };
 
 export type ApiContext = {
   user: ApiUser | null;
-  workspace: ReturnType<typeof getActiveWorkspace> extends Promise<infer W>
-    ? W extends { workspace: infer WS }
-      ? WS
-      : null
-    : null;
+  workspace: any;
   membership: Pick<WorkspaceMember, "role"> | null;
 };
 
@@ -34,12 +37,14 @@ export async function getApiContext() {
   }
 
   // Look up the caller's role in this workspace (also confirms membership).
-  const membership = await db.workspaceMember.findUnique({
-    where: {
-      workspaceId_userId: { workspaceId: workspace.id, userId: user.id },
-    },
-    select: { role: true },
-  });
+  const { data: membership, error } = await db
+    .from("WorkspaceMember")
+    .select("role")
+    .eq("workspaceId", workspace.id)
+    .eq("userId", user.id)
+    .maybeSingle();
+
+  if (error) throw error;
 
   // If the user has no membership row (edge case: cookie points to a ws they
   // were removed from), treat as no workspace access.

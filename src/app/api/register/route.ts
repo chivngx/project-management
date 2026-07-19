@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
@@ -38,7 +39,13 @@ export async function POST(req: Request) {
     const { name, email, password } = parsed.data;
     const normalized = email.trim().toLowerCase();
 
-    const existing = await db.user.findUnique({ where: { email: normalized } });
+    const { data: existing, error: existingErr } = await db
+      .from("User")
+      .select("id")
+      .eq("email", normalized)
+      .maybeSingle();
+
+    if (existingErr) throw existingErr;
     if (existing) {
       return NextResponse.json(
         { error: "Email đã được sử dụng" },
@@ -48,86 +55,146 @@ export async function POST(req: Request) {
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
 
-    // Wrap all writes in a transaction so a failure mid-flow can't leave an
-    // un-loginable user (user without workspace, etc.).
-    const { workspace } = await db.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
+    let userIdToCleanup: string | null = null;
+
+    try {
+      // 1. Create User
+      const newUserId = crypto.randomUUID();
+      const { data: user, error: userErr } = await db
+        .from("User")
+        .insert({
+          id: newUserId,
           name,
           email: normalized,
           passwordHash,
-        },
-      });
+        })
+        .select()
+        .single();
 
-      // Give the new user their own workspace + a starter project so the
-      // workspace isn't empty.
-      const workspace = await tx.workspace.create({
-        data: {
+      if (userErr) throw userErr;
+      userIdToCleanup = user.id;
+
+      // 2. Create Workspace
+      const newWorkspaceId = crypto.randomUUID();
+      const { data: workspace, error: wsErr } = await db
+        .from("Workspace")
+        .insert({
+          id: newWorkspaceId,
           name: `${name.split(" ")[0]}'s Workspace`,
           ownerId: user.id,
-          members: {
-            create: { userId: user.id, role: "OWNER" },
-          },
-        },
-      });
+        })
+        .select()
+        .single();
 
-      const starter = await tx.project.create({
-        data: {
+      if (wsErr) throw wsErr;
+
+      // 3. Create WorkspaceMember
+      const newMemberId = crypto.randomUUID();
+      const { error: memberErr } = await db
+        .from("WorkspaceMember")
+        .insert({
+          id: newMemberId,
+          workspaceId: workspace.id,
+          userId: user.id,
+          role: "OWNER",
+        });
+
+      if (memberErr) throw memberErr;
+
+      // 4. Create Project
+      const newProjectId = crypto.randomUUID();
+      const { data: starter, error: projErr } = await db
+        .from("Project")
+        .insert({
+          id: newProjectId,
           workspaceId: workspace.id,
           name: "Getting Started",
           description:
             "A starter project to explore the app. Feel free to rename or delete it.",
           status: "ACTIVE",
           priority: "MEDIUM",
-          startDate: new Date(),
-          dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14),
-          members: { create: { userId: user.id, role: "MEMBER" } },
+          startDate: new Date().toISOString(),
+          dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
+        })
+        .select()
+        .single();
+
+      if (projErr) throw projErr;
+
+      // 5. Create ProjectMember
+      const newProjMemberId = crypto.randomUUID();
+      const { error: pmErr } = await db
+        .from("ProjectMember")
+        .insert({
+          id: newProjMemberId,
+          projectId: starter.id,
+          userId: user.id,
+          role: "MEMBER",
+        });
+
+      if (pmErr) throw pmErr;
+
+      // 6. Create Tasks
+      const tasksData = [
+        {
+          id: crypto.randomUUID(),
+          projectId: starter.id,
+          title: "Create your first project",
+          status: "TODO",
+          priority: "MEDIUM",
+          creatorId: user.id,
+          assigneeId: user.id,
+          dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString(),
         },
-      });
+        {
+          id: crypto.randomUUID(),
+          projectId: starter.id,
+          title: "Invite a team member",
+          status: "TODO",
+          priority: "LOW",
+          creatorId: user.id,
+          assigneeId: user.id,
+        },
+        {
+          id: crypto.randomUUID(),
+          projectId: starter.id,
+          title: "Explore the dashboard",
+          status: "DONE",
+          priority: "LOW",
+          creatorId: user.id,
+          assigneeId: user.id,
+        },
+      ];
 
-      await tx.task.createMany({
-        data: [
-          {
-            projectId: starter.id,
-            title: "Create your first project",
-            status: "TODO",
-            priority: "MEDIUM",
-            creatorId: user.id,
-            assigneeId: user.id,
-            dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
-          },
-          {
-            projectId: starter.id,
-            title: "Invite a team member",
-            status: "TODO",
-            priority: "LOW",
-            creatorId: user.id,
-            assigneeId: user.id,
-          },
-          {
-            projectId: starter.id,
-            title: "Explore the dashboard",
-            status: "DONE",
-            priority: "LOW",
-            creatorId: user.id,
-            assigneeId: user.id,
-          },
-        ],
-      });
+      const { error: tasksErr } = await db
+        .from("Task")
+        .insert(tasksData);
 
-      await tx.activity.create({
-        data: {
+      if (tasksErr) throw tasksErr;
+
+      // 7. Create Activity
+      const newActivityId = crypto.randomUUID();
+      const { error: actErr } = await db
+        .from("Activity")
+        .insert({
+          id: newActivityId,
           workspaceId: workspace.id,
           userId: user.id,
           action: "created_workspace",
           entityType: "WORKSPACE",
           entityId: workspace.id,
           message: `${name} created workspace ${workspace.name}`,
-        },
-      });
+        });
 
-      return { workspace };
-    });
+      if (actErr) throw actErr;
+
+    } catch (e) {
+      console.error("[register]", e);
+      if (userIdToCleanup) {
+        await db.from("User").delete().eq("id", userIdToCleanup);
+      }
+      throw e;
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

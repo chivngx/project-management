@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getApiContext } from "@/lib/api-context";
 
@@ -7,11 +8,14 @@ export async function GET() {
   const { user } = await getApiContext();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const memberships = await db.workspaceMember.findMany({
-    where: { userId: user.id },
-    include: { workspace: true },
-    orderBy: { joinedAt: "asc" },
-  });
+  const { data: rawMemberships, error } = await db
+    .from("WorkspaceMember")
+    .select("*, workspace:Workspace(*)")
+    .eq("userId", user.id)
+    .order("joinedAt", { ascending: true });
+
+  if (error) throw error;
+  const memberships = (rawMemberships || []) as any[];
 
   return NextResponse.json(
     memberships.map((m) => ({
@@ -39,24 +43,45 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Tên không hợp lệ" }, { status: 400 });
   }
 
-  const workspace = await db.workspace.create({
-    data: {
+  const newWorkspaceId = crypto.randomUUID();
+  const { data: workspace, error: wsErr } = await db
+    .from("Workspace")
+    .insert({
+      id: newWorkspaceId,
       name: parsed.data.name,
       ownerId: user.id,
-      members: { create: { userId: user.id, role: "OWNER" } },
-    },
-  });
+    })
+    .select()
+    .single();
 
-  await db.activity.create({
-    data: {
+  if (wsErr) throw wsErr;
+
+  const newMemberId = crypto.randomUUID();
+  const { error: memberErr } = await db
+    .from("WorkspaceMember")
+    .insert({
+      id: newMemberId,
+      workspaceId: workspace.id,
+      userId: user.id,
+      role: "OWNER",
+    });
+
+  if (memberErr) throw memberErr;
+
+  const newActivityId = crypto.randomUUID();
+  const { error: actErr } = await db
+    .from("Activity")
+    .insert({
+      id: newActivityId,
       workspaceId: workspace.id,
       userId: user.id,
       action: "created_workspace",
       entityType: "WORKSPACE",
       entityId: workspace.id,
       message: `${user.name ?? "Someone"} created workspace ${workspace.name}`,
-    },
-  });
+    });
+
+  if (actErr) throw actErr;
 
   return NextResponse.json({
     id: workspace.id,

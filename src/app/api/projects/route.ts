@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getApiContext } from "@/lib/api-context";
 import { PROJECT_PRIORITIES, PROJECT_STATUSES } from "@/lib/constants";
@@ -9,25 +10,19 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!workspace) return NextResponse.json([]);
 
-  const projects = await db.project.findMany({
-    where: { workspaceId: workspace.id },
-    // SECURITY: select only safe user fields (never expose passwordHash).
-    include: {
-      members: {
-        include: {
-          user: { select: { id: true, name: true, email: true, image: true } },
-        },
-      },
-      // Filtered counts for total + done tasks.
-      tasks: { select: { status: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const { data: rawProjects, error } = await db
+    .from("Project")
+    .select("*, members:ProjectMember(*, user:User(id, name, email, image)), tasks:Task(status)")
+    .eq("workspaceId", workspace.id)
+    .order("createdAt", { ascending: false });
+
+  if (error) throw error;
+  const projects = (rawProjects || []) as any[];
 
   return NextResponse.json(
     projects.map((p) => {
-      const total = p.tasks.length;
-      const done = p.tasks.filter((t) => t.status === "DONE").length;
+      const total = p.tasks?.length || 0;
+      const done = (p.tasks || []).filter((t: any) => t.status === "DONE").length;
       return {
         id: p.id,
         name: p.name,
@@ -38,12 +33,12 @@ export async function GET() {
         dueDate: p.dueDate,
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,
-        memberCount: p.members.length,
-        members: p.members.map((m) => ({
-          id: m.user.id,
-          name: m.user.name,
-          email: m.user.email,
-          image: m.user.image,
+        memberCount: p.members?.length || 0,
+        members: (p.members || []).map((m: any) => ({
+          id: m.user?.id,
+          name: m.user?.name,
+          email: m.user?.email,
+          image: m.user?.image,
         })),
         taskCount: total,
         doneCount: done,
@@ -93,47 +88,73 @@ export async function POST(req: Request) {
   }
 
   // Validate memberIds belong to the workspace.
-  const validMembers = d.memberIds?.length
-    ? await db.workspaceMember.findMany({
-        where: { workspaceId: workspace.id, userId: { in: d.memberIds } },
-        select: { userId: true },
-      })
-    : [];
+  let validMembers: any[] = [];
+  if (d.memberIds && d.memberIds.length > 0) {
+    const { data: membersData, error: memberErr } = await db
+      .from("WorkspaceMember")
+      .select("userId")
+      .eq("workspaceId", workspace.id)
+      .in("userId", d.memberIds);
+    if (memberErr) throw memberErr;
+    validMembers = membersData || [];
+  }
 
-  const project = await db.$transaction(async (tx) => {
-    const created = await tx.project.create({
-      data: {
-        workspaceId: workspace.id,
-        name: d.name,
-        description: d.description ?? null,
-        status: d.status ?? "ACTIVE",
-        priority: d.priority ?? "MEDIUM",
-        startDate: d.startDate ? new Date(d.startDate) : null,
-        dueDate: d.dueDate ? new Date(d.dueDate) : null,
-        members: {
-          create: [
-            { userId: user.id, role: "MEMBER" },
-            ...validMembers
-              .filter((m) => m.userId !== user.id)
-              .map((m) => ({ userId: m.userId, role: "MEMBER" as const })),
-          ],
-        },
-      },
+  const newProjectId = crypto.randomUUID();
+  const { data: project, error: projErr } = await db
+    .from("Project")
+    .insert({
+      id: newProjectId,
+      workspaceId: workspace.id,
+      name: d.name,
+      description: d.description ?? null,
+      status: d.status ?? "ACTIVE",
+      priority: d.priority ?? "MEDIUM",
+      startDate: d.startDate ? new Date(d.startDate).toISOString() : null,
+      dueDate: d.dueDate ? new Date(d.dueDate).toISOString() : null,
+    })
+    .select()
+    .single();
+
+  if (projErr) throw projErr;
+
+  // Insert project members
+  const memberInserts = [
+    {
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      userId: user.id,
+      role: "MEMBER",
+    },
+    ...validMembers
+      .filter((m) => m.userId !== user.id)
+      .map((m) => ({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        userId: m.userId,
+        role: "MEMBER",
+      })),
+  ];
+
+  const { error: pmErr } = await db
+    .from("ProjectMember")
+    .insert(memberInserts);
+
+  if (pmErr) throw pmErr;
+
+  const newActivityId = crypto.randomUUID();
+  const { error: actErr } = await db
+    .from("Activity")
+    .insert({
+      id: newActivityId,
+      workspaceId: workspace.id,
+      userId: user.id,
+      action: "created_project",
+      entityType: "PROJECT",
+      entityId: project.id,
+      message: `${user.name ?? "Someone"} created project ${project.name}`,
     });
 
-    await tx.activity.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
-        action: "created_project",
-        entityType: "PROJECT",
-        entityId: created.id,
-        message: `${user.name ?? "Someone"} created project ${created.name}`,
-      },
-    });
-
-    return created;
-  });
+  if (actErr) throw actErr;
 
   return NextResponse.json({ id: project.id });
 }

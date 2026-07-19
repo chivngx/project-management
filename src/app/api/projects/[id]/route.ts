@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getApiContext, canAdmin, forbidden } from "@/lib/api-context";
 import { PROJECT_PRIORITIES, PROJECT_STATUSES } from "@/lib/constants";
@@ -12,29 +13,22 @@ export async function GET(_req: Request, { params }: Params) {
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const { id } = await params;
-  // SECURITY: only select safe user fields (never expose passwordHash).
-  const project = await db.project.findFirst({
-    where: { id, workspaceId: workspace.id },
-    include: {
-      members: {
-        include: {
-          user: { select: { id: true, name: true, email: true, image: true } },
-        },
-      },
-      tasks: {
-        include: {
-          assignee: { select: { id: true, name: true, email: true, image: true } },
-          creator: { select: { id: true, name: true, email: true, image: true } },
-        },
-        orderBy: { createdAt: "asc" },
-      },
-      _count: { select: { tasks: true } },
-    },
-  });
+  const { data: project, error: projErr } = await db
+    .from("Project")
+    .select("*, members:ProjectMember(*, user:User(id, name, email, image)), tasks:Task(*, assignee:User!Task_assigneeId_fkey(id, name, email, image), creator:User!Task_creatorId_fkey(id, name, email, image))")
+    .eq("id", id)
+    .eq("workspaceId", workspace.id)
+    .maybeSingle();
+
+  if (projErr) throw projErr;
   if (!project)
     return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
 
-  // Map to a flat, consistent response shape (matches GET /api/projects).
+  // Sort tasks in memory by createdAt ascending
+  const tasks = (project.tasks || []).sort(
+    (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+
   return NextResponse.json({
     id: project.id,
     workspaceId: project.workspaceId,
@@ -52,14 +46,14 @@ export async function GET(_req: Request, { params }: Params) {
     repoToken: project.repoToken,
     repoApiUrl: project.repoApiUrl,
     repoWebhookSecret: project.repoWebhookSecret,
-    members: project.members.map((m) => ({
-      id: m.user.id,
-      name: m.user.name,
-      email: m.user.email,
-      image: m.user.image,
+    members: (project.members || []).map((m: any) => ({
+      id: m.user?.id,
+      name: m.user?.name,
+      email: m.user?.email,
+      image: m.user?.image,
       role: m.role,
     })),
-    tasks: project.tasks.map((t) => ({
+    tasks: tasks.map((t: any) => ({
       id: t.id,
       projectId: t.projectId,
       title: t.title,
@@ -77,10 +71,10 @@ export async function GET(_req: Request, { params }: Params) {
         : null,
       creatorId: t.creatorId,
       creator: {
-        id: t.creator.id,
-        name: t.creator.name,
-        email: t.creator.email,
-        image: t.creator.image,
+        id: t.creator?.id,
+        name: t.creator?.name,
+        email: t.creator?.email,
+        image: t.creator?.image,
       },
       dueDate: t.dueDate,
       createdAt: t.createdAt,
@@ -90,7 +84,7 @@ export async function GET(_req: Request, { params }: Params) {
       externalUrl: t.externalUrl,
       externalProvider: t.externalProvider,
     })),
-    taskCount: project._count.tasks,
+    taskCount: tasks.length,
   });
 }
 
@@ -116,9 +110,14 @@ export async function PATCH(req: Request, { params }: Params) {
       { status: 400 }
     );
 
-  const existing = await db.project.findFirst({
-    where: { id, workspaceId: workspace.id },
-  });
+  const { data: existing, error: existErr } = await db
+    .from("Project")
+    .select("*")
+    .eq("id", id)
+    .eq("workspaceId", workspace.id)
+    .maybeSingle();
+
+  if (existErr) throw existErr;
   if (!existing)
     return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
 
@@ -127,41 +126,46 @@ export async function PATCH(req: Request, { params }: Params) {
   // Cross-field validation: if both startDate and dueDate are provided in
   // this patch, dueDate must be on/after startDate. If only one is provided,
   // compare against the existing value.
-  const effectiveStart = d.startDate !== undefined ? d.startDate : existing.startDate?.toISOString();
-  const effectiveDue = d.dueDate !== undefined ? d.dueDate : existing.dueDate?.toISOString();
+  const effectiveStart = d.startDate !== undefined ? d.startDate : existing.startDate;
+  const effectiveDue = d.dueDate !== undefined ? d.dueDate : existing.dueDate;
   if (effectiveStart && effectiveDue && new Date(effectiveDue) < new Date(effectiveStart)) {
     return NextResponse.json(
       { error: "Ngày kết thúc không được trước ngày bắt đầu" },
       { status: 400 }
     );
   }
-  const [updated] = await db.$transaction([
-    db.project.update({
-      where: { id },
-      data: {
-        ...(d.name !== undefined ? { name: d.name } : {}),
-        ...(d.description !== undefined ? { description: d.description } : {}),
-        ...(d.status ? { status: d.status } : {}),
-        ...(d.priority ? { priority: d.priority } : {}),
-        ...(d.startDate !== undefined
-          ? { startDate: d.startDate ? new Date(d.startDate) : null }
-          : {}),
-        ...(d.dueDate !== undefined
-          ? { dueDate: d.dueDate ? new Date(d.dueDate) : null }
-          : {}),
-      },
-    }),
-    db.activity.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
-        action: "updated_project",
-        entityType: "PROJECT",
-        entityId: id,
-        message: `${user.name ?? "Someone"} updated project ${existing.name}`,
-      },
-    }),
-  ]);
+
+  const updateData: any = {};
+  if (d.name !== undefined) updateData.name = d.name;
+  if (d.description !== undefined) updateData.description = d.description;
+  if (d.status !== undefined) updateData.status = d.status;
+  if (d.priority !== undefined) updateData.priority = d.priority;
+  if (d.startDate !== undefined) updateData.startDate = d.startDate ? new Date(d.startDate).toISOString() : null;
+  if (d.dueDate !== undefined) updateData.dueDate = d.dueDate ? new Date(d.dueDate).toISOString() : null;
+
+  const { data: updated, error: updateErr } = await db
+    .from("Project")
+    .update(updateData)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (updateErr) throw updateErr;
+
+  const newActivityId = crypto.randomUUID();
+  const { error: actErr } = await db
+    .from("Activity")
+    .insert({
+      id: newActivityId,
+      workspaceId: workspace.id,
+      userId: user.id,
+      action: "updated_project",
+      entityType: "PROJECT",
+      entityId: id,
+      message: `${user.name ?? "Someone"} updated project ${existing.name}`,
+    });
+
+  if (actErr) throw actErr;
 
   return NextResponse.json({ id: updated.id });
 }
@@ -175,25 +179,38 @@ export async function DELETE(_req: Request, { params }: Params) {
   if (!canAdmin(membership)) return forbidden("Chỉ quản trị viên mới được xóa dự án");
 
   const { id } = await params;
-  const existing = await db.project.findFirst({
-    where: { id, workspaceId: workspace.id },
-  });
+  const { data: existing, error: existErr } = await db
+    .from("Project")
+    .select("*")
+    .eq("id", id)
+    .eq("workspaceId", workspace.id)
+    .maybeSingle();
+
+  if (existErr) throw existErr;
   if (!existing)
     return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
 
-  await db.$transaction([
-    db.project.delete({ where: { id } }),
-    db.activity.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
-        action: "deleted_project",
-        entityType: "PROJECT",
-        entityId: id,
-        message: `${user.name ?? "Someone"} deleted project ${existing.name}`,
-      },
-    }),
-  ]);
+  const { error: delErr } = await db
+    .from("Project")
+    .delete()
+    .eq("id", id);
+
+  if (delErr) throw delErr;
+
+  const newActivityId = crypto.randomUUID();
+  const { error: actErr } = await db
+    .from("Activity")
+    .insert({
+      id: newActivityId,
+      workspaceId: workspace.id,
+      userId: user.id,
+      action: "deleted_project",
+      entityType: "PROJECT",
+      entityId: id,
+      message: `${user.name ?? "Someone"} deleted project ${existing.name}`,
+    });
+
+  if (actErr) throw actErr;
 
   return NextResponse.json({ ok: true });
 }

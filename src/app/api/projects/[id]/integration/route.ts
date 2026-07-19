@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getApiContext } from "@/lib/api-context";
 import { encrypt, decrypt } from "@/lib/encryption";
@@ -25,18 +26,13 @@ export async function GET(req: Request, { params }: Params) {
   const selectedIntegrationId = searchParams.get("integrationId");
 
   // Fetch all integrations for this project
-  const integrations = await db.gitIntegration.findMany({
-    where: { projectId },
-    select: {
-      id: true,
-      provider: true,
-      owner: true,
-      name: true,
-      apiUrl: true,
-      webhookSecret: true,
-      createdAt: true,
-    },
-  });
+  const { data: integrationsRaw, error: listErr } = await db
+    .from("GitIntegration")
+    .select("id, provider, owner, name, apiUrl, webhookSecret, createdAt")
+    .eq("projectId", projectId);
+
+  if (listErr) throw listErr;
+  const integrations = integrationsRaw || [];
 
   if (integrations.length === 0) {
     return NextResponse.json({ configured: false, integrations: [] });
@@ -56,9 +52,13 @@ export async function GET(req: Request, { params }: Params) {
   }
 
   // Retrieve the full record (including the token) to decrypt and query APIs
-  const activeIntegration = await db.gitIntegration.findUnique({
-    where: { id: activeIntegrationMeta.id },
-  });
+  const { data: activeIntegration, error: findErr } = await db
+    .from("GitIntegration")
+    .select("*")
+    .eq("id", activeIntegrationMeta.id)
+    .maybeSingle();
+
+  if (findErr) throw findErr;
 
   if (!activeIntegration) {
     return NextResponse.json({
@@ -275,9 +275,14 @@ export async function POST(req: Request, { params }: Params) {
   const { repoProvider, repoOwner, repoName, repoToken, repoApiUrl, repoWebhookSecret } = parsed.data;
 
   // Verify the project exists in current workspace
-  const project = await db.project.findFirst({
-    where: { id: projectId, workspaceId: workspace.id },
-  });
+  const { data: project, error: projErr } = await db
+    .from("Project")
+    .select("*")
+    .eq("id", projectId)
+    .eq("workspaceId", workspace.id)
+    .maybeSingle();
+
+  if (projErr) throw projErr;
   if (!project) {
     return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
   }
@@ -286,49 +291,67 @@ export async function POST(req: Request, { params }: Params) {
   const tokenEncrypted = encrypt(repoToken);
 
   // Save new GitIntegration record (supports multi-repo)
-  const integration = await db.gitIntegration.upsert({
-    where: {
-      projectId_provider_owner_name: {
+  const { data: existingIntegration, error: findIntegErr } = await db
+    .from("GitIntegration")
+    .select("id")
+    .eq("projectId", projectId)
+    .eq("provider", repoProvider)
+    .eq("owner", repoOwner)
+    .eq("name", repoName)
+    .maybeSingle();
+
+  if (findIntegErr) throw findIntegErr;
+
+  let integrationId = existingIntegration?.id;
+
+  if (existingIntegration) {
+    const { error: updateIntegErr } = await db
+      .from("GitIntegration")
+      .update({
+        token: tokenEncrypted,
+        apiUrl: repoApiUrl || null,
+        webhookSecret: repoWebhookSecret || null,
+      })
+      .eq("id", existingIntegration.id);
+    if (updateIntegErr) throw updateIntegErr;
+  } else {
+    const newIntegrationId = crypto.randomUUID();
+    const { error: insertIntegErr } = await db
+      .from("GitIntegration")
+      .insert({
+        id: newIntegrationId,
         projectId,
         provider: repoProvider,
         owner: repoOwner,
         name: repoName,
-      },
-    },
-    update: {
-      token: tokenEncrypted,
-      apiUrl: repoApiUrl || null,
-      webhookSecret: repoWebhookSecret || null,
-    },
-    create: {
-      projectId,
-      provider: repoProvider,
-      owner: repoOwner,
-      name: repoName,
-      token: tokenEncrypted,
-      apiUrl: repoApiUrl || null,
-      webhookSecret: repoWebhookSecret || null,
-    },
-  });
+        token: tokenEncrypted,
+        apiUrl: repoApiUrl || null,
+        webhookSecret: repoWebhookSecret || null,
+      });
+    if (insertIntegErr) throw insertIntegErr;
+    integrationId = newIntegrationId;
+  }
 
   // Backward compatibility: update project directly too (helps transition)
-  await db.project.update({
-    where: { id: projectId },
-    data: {
+  const { error: updateProjErr } = await db
+    .from("Project")
+    .update({
       repoProvider,
       repoOwner,
       repoName,
       repoToken: tokenEncrypted,
       repoApiUrl: repoApiUrl || null,
       repoWebhookSecret: repoWebhookSecret || null,
-    },
-  });
+    })
+    .eq("id", projectId);
+
+  if (updateProjErr) throw updateProjErr;
 
   return NextResponse.json({
     ok: true,
     projectId,
-    integrationId: integration.id,
-    repoProvider: integration.provider,
+    integrationId,
+    repoProvider,
   });
 }
 
@@ -343,55 +366,74 @@ export async function DELETE(req: Request, { params }: Params) {
 
   if (!integrationId) {
     // Legacy fall back: delete all integrations for this project
-    await db.gitIntegration.deleteMany({
-      where: { projectId },
-    });
+    const { error: delManyErr } = await db
+      .from("GitIntegration")
+      .delete()
+      .eq("projectId", projectId);
+
+    if (delManyErr) throw delManyErr;
     
     // Clear project legacy fields
-    await db.project.update({
-      where: { id: projectId },
-      data: {
+    const { error: clearProjErr } = await db
+      .from("Project")
+      .update({
         repoProvider: null,
         repoOwner: null,
         repoName: null,
         repoToken: null,
         repoApiUrl: null,
         repoWebhookSecret: null,
-      },
-    });
+      })
+      .eq("id", projectId);
+
+    if (clearProjErr) throw clearProjErr;
 
     return NextResponse.json({ ok: true });
   }
 
   // Delete the specific integration
-  const exists = await db.gitIntegration.findFirst({
-    where: { id: integrationId, projectId },
-  });
+  const { data: exists, error: existErr } = await db
+    .from("GitIntegration")
+    .select("*")
+    .eq("id", integrationId)
+    .eq("projectId", projectId)
+    .maybeSingle();
+
+  if (existErr) throw existErr;
 
   if (!exists) {
     return NextResponse.json({ error: "Không tìm thấy cấu hình tích hợp cần xóa" }, { status: 404 });
   }
 
-  await db.gitIntegration.delete({
-    where: { id: integrationId },
-  });
+  const { error: delErr } = await db
+    .from("GitIntegration")
+    .delete()
+    .eq("id", integrationId);
+
+  if (delErr) throw delErr;
 
   // If this was the last integration, clear project legacy fields
-  const count = await db.gitIntegration.count({
-    where: { projectId },
-  });
+  const { count, error: countErr } = await db
+    .from("GitIntegration")
+    .select("*", { count: "exact", head: true })
+    .eq("projectId", projectId);
+
+  if (countErr) throw countErr;
+
   if (count === 0) {
-    await db.project.update({
-      where: { id: projectId },
-      data: {
+    const { error: clearProjErr } = await db
+      .from("Project")
+      .update({
         repoProvider: null,
         repoOwner: null,
         repoName: null,
         repoToken: null,
         repoApiUrl: null,
         repoWebhookSecret: null,
-      },
-    });
+      })
+      .eq("id", projectId);
+
+    if (clearProjErr) throw clearProjErr;
   }
 
   return NextResponse.json({ ok: true });

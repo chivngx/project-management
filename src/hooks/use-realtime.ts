@@ -16,12 +16,19 @@ export function useRealtime(workspaceId: string | undefined | null): Socket | nu
 
   React.useEffect(() => {
     if (!workspaceId) return;
-    const s = io("/", {
-      path: "/",
-      transports: ["websocket", "polling"],
-      // The Caddy gateway routes by ?XTransformPort=<port>.
-      query: { XTransformPort: "3003" },
-    });
+    const isLocalhost = typeof window !== "undefined" && 
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+    const socketUrl = isLocalhost ? "http://localhost:3003" : "/";
+    const socketOptions = isLocalhost
+      ? { path: "/", transports: ["websocket", "polling"] }
+      : {
+          path: "/",
+          transports: ["websocket", "polling"],
+          query: { XTransformPort: "3003" },
+        };
+
+    const s = io(socketUrl, socketOptions);
     s.on("connect", () => {
       s.emit("join", `ws:${workspaceId}`);
     });

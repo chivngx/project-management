@@ -24,23 +24,26 @@ export async function GET(req: Request) {
     end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   }
 
-  const tasks = await db.task.findMany({
-    where: {
-      project: { workspaceId: workspace.id },
-      dueDate: { gte: start, lt: end },
-    },
-    select: {
-      id: true,
-      title: true,
-      status: true,
-      priority: true,
-      dueDate: true,
-      projectId: true,
-      project: { select: { name: true } },
-      assignee: { select: { name: true, image: true } },
-    },
-    orderBy: { dueDate: "asc" },
-  });
+  const { data: projects, error: projErr } = await db
+    .from("Project")
+    .select("id")
+    .eq("workspaceId", workspace.id);
+
+  if (projErr) throw projErr;
+  const projectIds = (projects || []).map((p) => p.id);
+
+  if (projectIds.length === 0) return NextResponse.json([]);
+
+  const { data: rawTasks, error: tasksErr } = await db
+    .from("Task")
+    .select("id, title, status, priority, dueDate, projectId, project:Project(name), assignee:User!Task_assigneeId_fkey(name, image)")
+    .in("projectId", projectIds)
+    .gte("dueDate", start.toISOString())
+    .lt("dueDate", end.toISOString())
+    .order("dueDate", { ascending: true });
+
+  if (tasksErr) throw tasksErr;
+  const tasks = (rawTasks || []) as any[];
 
   return NextResponse.json(
     tasks.map((t) => ({
@@ -49,7 +52,7 @@ export async function GET(req: Request) {
       status: t.status,
       priority: t.priority,
       dueDate: t.dueDate,
-      projectName: t.project.name,
+      projectName: t.project?.name ?? null,
       projectId: t.projectId,
       assigneeName: t.assignee?.name ?? null,
     }))

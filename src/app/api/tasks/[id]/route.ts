@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getApiContext, canAdmin, forbidden } from "@/lib/api-context";
 import { emitToWorkspace } from "@/lib/realtime";
@@ -31,12 +32,16 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const { id } = await params;
-  const task = await db.task.findFirst({
-    where: { id, project: { workspaceId: workspace.id } },
-    include: { project: true, gitIntegration: true },
-  });
-  if (!task)
+  const { data: task, error: findErr } = await db
+    .from("Task")
+    .select("*, project:Project(*), gitIntegration:GitIntegration(*)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (findErr) throw findErr;
+  if (!task || task.project?.workspaceId !== workspace.id) {
     return NextResponse.json({ error: "Không tìm thấy task" }, { status: 404 });
+  }
 
   // Authorization: creator, assignee, or workspace admin may edit.
   const canEdit =
@@ -60,11 +65,14 @@ export async function PATCH(req: Request, { params }: Params) {
   if (d.assigneeId !== undefined) {
     if (d.assigneeId === null) assigneeId = null;
     else {
-      const member = await db.projectMember.findUnique({
-        where: {
-          projectId_userId: { projectId: task.projectId, userId: d.assigneeId },
-        },
-      });
+      const { data: member, error: assigneeErr } = await db
+        .from("ProjectMember")
+        .select("id")
+        .eq("projectId", task.projectId)
+        .eq("userId", d.assigneeId)
+        .maybeSingle();
+
+      if (assigneeErr) throw assigneeErr;
       if (!member)
         return NextResponse.json(
           { error: "Người được giao không phải thành viên dự án" },
@@ -74,19 +82,22 @@ export async function PATCH(req: Request, { params }: Params) {
     }
   }
 
-  const updated = await db.task.update({
-    where: { id },
-    data: {
-      ...(d.title !== undefined ? { title: d.title } : {}),
-      ...(d.description !== undefined ? { description: d.description } : {}),
-      ...(d.status ? { status: d.status } : {}),
-      ...(d.priority ? { priority: d.priority } : {}),
-      ...(d.assigneeId !== undefined ? { assigneeId } : {}),
-      ...(d.dueDate !== undefined
-        ? { dueDate: d.dueDate ? new Date(d.dueDate) : null }
-        : {}),
-    },
-  });
+  const updateData: any = {};
+  if (d.title !== undefined) updateData.title = d.title;
+  if (d.description !== undefined) updateData.description = d.description;
+  if (d.status !== undefined) updateData.status = d.status;
+  if (d.priority !== undefined) updateData.priority = d.priority;
+  if (d.assigneeId !== undefined) updateData.assigneeId = assigneeId;
+  if (d.dueDate !== undefined) updateData.dueDate = d.dueDate ? new Date(d.dueDate).toISOString() : null;
+
+  const { data: updated, error: updateErr } = await db
+    .from("Task")
+    .update(updateData)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (updateErr) throw updateErr;
 
   // TWO-WAY SYNC: If status has changed and task has Git integration, update issue state & labels
   if (d.status !== undefined && d.status !== beforeStatus && task.externalNumber && task.gitIntegration) {
@@ -152,16 +163,19 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   if (d.status === "DONE" && beforeStatus !== "DONE") {
-    await db.activity.create({
-      data: {
+    const newActivityId = crypto.randomUUID();
+    const { error: actErr } = await db
+      .from("Activity")
+      .insert({
+        id: newActivityId,
         workspaceId: workspace.id,
         userId: user.id,
         action: "completed_task",
         entityType: "TASK",
         entityId: updated.id,
         message: `${user.name ?? "Someone"} completed task ${updated.title}`,
-      },
-    });
+      });
+    if (actErr) throw actErr;
   }
 
   // Notify the new assignee when a task is assigned to them (and it's not
@@ -172,15 +186,18 @@ export async function PATCH(req: Request, { params }: Params) {
     assigneeId !== task.assigneeId &&
     assigneeId !== user.id
   ) {
-    await db.notification.create({
-      data: {
+    const newNotifId = crypto.randomUUID();
+    const { error: notifErr } = await db
+      .from("Notification")
+      .insert({
+        id: newNotifId,
         userId: assigneeId,
         workspaceId: workspace.id,
         type: "task_assigned",
         message: `${user.name ?? "Someone"} đã giao tác vụ "${updated.title}" cho bạn`,
         link: `/projects/${task.projectId}`,
-      },
-    });
+      });
+    if (notifErr) throw notifErr;
   }
 
   // Broadcast the change to other workspace members in realtime.
@@ -199,31 +216,43 @@ export async function DELETE(_req: Request, { params }: Params) {
   if (!workspace) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const { id } = await params;
-  const task = await db.task.findFirst({
-    where: { id, project: { workspaceId: workspace.id } },
-    select: { id: true, title: true, creatorId: true },
-  });
-  if (!task)
+  const { data: task, error: findErr } = await db
+    .from("Task")
+    .select("*, project:Project(*)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (findErr) throw findErr;
+  if (!task || task.project?.workspaceId !== workspace.id) {
     return NextResponse.json({ error: "Không tìm thấy task" }, { status: 404 });
+  }
 
   // Authorization: task creator or workspace admin may delete.
   const canDelete = task.creatorId === user.id || canAdmin(membership);
   if (!canDelete)
     return forbidden("Bạn chỉ có thể xóa tác vụ do mình tạo");
 
-  await db.task.delete({ where: { id } });
+  const { error: delErr } = await db
+    .from("Task")
+    .delete()
+    .eq("id", id);
 
-  // Activity log for task deletion (was missing before).
-  await db.activity.create({
-    data: {
+  if (delErr) throw delErr;
+
+  const newActivityId = crypto.randomUUID();
+  const { error: actErr } = await db
+    .from("Activity")
+    .insert({
+      id: newActivityId,
       workspaceId: workspace.id,
       userId: user.id,
       action: "deleted_task",
       entityType: "TASK",
       entityId: id,
       message: `${user.name ?? "Someone"} deleted task ${task.title}`,
-    },
-  });
+    });
+
+  if (actErr) throw actErr;
 
   return NextResponse.json({ ok: true });
 }

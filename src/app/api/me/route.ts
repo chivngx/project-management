@@ -9,10 +9,13 @@ export async function GET() {
 
   // Fetch the full user record (including image) from the DB, since the
   // session may lag behind after an edit.
-  const full = await db.user.findUnique({
-    where: { id: user.id },
-    select: { id: true, name: true, email: true, image: true },
-  });
+  const { data: full, error } = await db
+    .from("User")
+    .select("id, name, email, image")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) throw error;
   if (!full) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   return NextResponse.json(full);
@@ -44,14 +47,18 @@ export async function PATCH(req: Request) {
     );
   }
 
-  const updated = await db.user.update({
-    where: { id: user.id },
-    data: {
-      ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-      ...(parsed.data.image !== undefined ? { image: parsed.data.image } : {}),
-    },
-    select: { id: true, name: true, email: true, image: true },
-  });
+  const updateData: any = {};
+  if (parsed.data.name !== undefined) updateData.name = parsed.data.name;
+  if (parsed.data.image !== undefined) updateData.image = parsed.data.image;
+
+  const { data: updated, error: updateErr } = await db
+    .from("User")
+    .update(updateData)
+    .eq("id", user.id)
+    .select("id, name, email, image")
+    .single();
+
+  if (updateErr) throw updateErr;
 
   return NextResponse.json(updated);
 }

@@ -1,0 +1,8 @@
+packages:
+  - '.'
+  - 'mini-services/realtime'
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true

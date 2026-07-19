@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { getApiContext, canAdmin, isOwner, forbidden } from "@/lib/api-context";
 
@@ -24,11 +25,14 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!parsed.success)
     return NextResponse.json({ error: "Vai trò không hợp lệ" }, { status: 400 });
 
-  const target = await db.workspaceMember.findUnique({
-    where: {
-      workspaceId_userId: { workspaceId: workspace.id, userId: targetUserId },
-    },
-  });
+  const { data: target, error: targetErr } = await db
+    .from("WorkspaceMember")
+    .select("*")
+    .eq("workspaceId", workspace.id)
+    .eq("userId", targetUserId)
+    .maybeSingle();
+
+  if (targetErr) throw targetErr;
   if (!target)
     return NextResponse.json({ error: "Không tìm thấy thành viên" }, { status: 404 });
 
@@ -40,10 +44,13 @@ export async function PATCH(req: Request, { params }: Params) {
     );
   }
 
-  await db.workspaceMember.update({
-    where: { workspaceId_userId: { workspaceId: workspace.id, userId: targetUserId } },
-    data: { role: parsed.data },
-  });
+  const { error: updateErr } = await db
+    .from("WorkspaceMember")
+    .update({ role: parsed.data })
+    .eq("workspaceId", workspace.id)
+    .eq("userId", targetUserId);
+
+  if (updateErr) throw updateErr;
 
   return NextResponse.json({ ok: true });
 }
@@ -59,11 +66,14 @@ export async function DELETE(_req: Request, { params }: Params) {
   // self-removal here too).
   const { id: targetUserId } = await params;
 
-  const target = await db.workspaceMember.findUnique({
-    where: {
-      workspaceId_userId: { workspaceId: workspace.id, userId: targetUserId },
-    },
-  });
+  const { data: target, error: targetErr } = await db
+    .from("WorkspaceMember")
+    .select("*")
+    .eq("workspaceId", workspace.id)
+    .eq("userId", targetUserId)
+    .maybeSingle();
+
+  if (targetErr) throw targetErr;
   if (!target)
     return NextResponse.json({ error: "Không tìm thấy thành viên" }, { status: 404 });
 
@@ -81,25 +91,30 @@ export async function DELETE(_req: Request, { params }: Params) {
     );
   }
 
-  await db.$transaction([
-    db.workspaceMember.delete({
-      where: {
-        workspaceId_userId: { workspaceId: workspace.id, userId: targetUserId },
-      },
-    }),
-    db.activity.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: user.id,
-        action: "removed_member",
-        entityType: "MEMBER",
-        entityId: targetUserId,
-        message: isSelf
-          ? `${user.name ?? "Someone"} left the workspace`
-          : `${user.name ?? "Someone"} removed a member`,
-      },
-    }),
-  ]);
+  const { error: delErr } = await db
+    .from("WorkspaceMember")
+    .delete()
+    .eq("workspaceId", workspace.id)
+    .eq("userId", targetUserId);
+
+  if (delErr) throw delErr;
+
+  const newActivityId = crypto.randomUUID();
+  const { error: actErr } = await db
+    .from("Activity")
+    .insert({
+      id: newActivityId,
+      workspaceId: workspace.id,
+      userId: user.id,
+      action: "removed_member",
+      entityType: "MEMBER",
+      entityId: targetUserId,
+      message: isSelf
+        ? `${user.name ?? "Someone"} left the workspace`
+        : `${user.name ?? "Someone"} removed a member`,
+    });
+
+  if (actErr) throw actErr;
 
   return NextResponse.json({ ok: true });
 }
