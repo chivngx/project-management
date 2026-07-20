@@ -72,7 +72,12 @@ export function EditTaskDialog({
   const [dueDate, setDueDate] = React.useState(isoToDateInput(task.dueDate));
 
   const [creatingBranch, setCreatingBranch] = React.useState(false);
-  const [createdBranchName, setCreatedBranchName] = React.useState("");
+  const [createdBranchName, setCreatedBranchName] = React.useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(`task_branch_${task.id}`) || "";
+    }
+    return "";
+  });
   const [copiedBranch, setCopiedBranch] = React.useState(false);
 
   React.useEffect(() => {
@@ -137,6 +142,9 @@ export function EditTaskDialog({
       });
       if (res.error) throw new Error(res.error);
       setCreatedBranchName(res.branchName);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`task_branch_${task.id}`, res.branchName);
+      }
       if (res.alreadyExists) {
         toast.info("Nhánh Git này đã tồn tại trên repository.");
       } else {
