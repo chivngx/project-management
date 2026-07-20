@@ -51,11 +51,11 @@ export async function GET(req: Request, { params }: Params) {
     let accessToken = "";
 
     if (provider === "github") {
-      const clientId = process.env.GITHUB_CLIENT_ID;
-      const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+      const clientId = process.env.GITHUB_INTEGRATION_CLIENT_ID || process.env.GITHUB_CLIENT_ID;
+      const clientSecret = process.env.GITHUB_INTEGRATION_CLIENT_SECRET || process.env.GITHUB_CLIENT_SECRET;
 
       if (!clientId || !clientSecret) {
-        throw new Error("Missing GitHub Client ID or Client Secret in environment");
+        throw new Error("Missing GitHub Integration Client ID or Client Secret in environment");
       }
 
       const res = await fetch("https://github.com/login/oauth/access_token", {

@@ -23,10 +23,10 @@ export async function GET(req: Request, { params }: Params) {
   const redirectUri = `${protocol}://${host}/api/auth/oauth/${provider}/callback`;
 
   if (provider === "github") {
-    const clientId = process.env.GITHUB_CLIENT_ID;
+    const clientId = process.env.GITHUB_INTEGRATION_CLIENT_ID || process.env.GITHUB_CLIENT_ID;
     if (!clientId) {
       return NextResponse.json(
-        { error: "GITHUB_CLIENT_ID chưa được cấu hình trong file .env" },
+        { error: "GITHUB_INTEGRATION_CLIENT_ID hoặc GITHUB_CLIENT_ID chưa được cấu hình trong file .env" },
         { status: 400 }
       );
     }
