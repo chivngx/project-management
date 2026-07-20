@@ -88,7 +88,10 @@ export function EditTaskDialog({
       setPriority(task.priority);
       setAssigneeId(task.assigneeId ?? "__none__");
       setDueDate(isoToDateInput(task.dueDate));
-      setCreatedBranchName("");
+      
+      const savedBranch = typeof window !== "undefined" ? localStorage.getItem(`task_branch_${task.id}`) || "" : "";
+      setCreatedBranchName(savedBranch);
+      
       setCopiedBranch(false);
       setCreatingBranch(false);
     }
