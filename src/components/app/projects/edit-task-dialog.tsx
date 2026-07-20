@@ -283,13 +283,13 @@ export function EditTaskDialog({
           )}
 
           {/* Git Integration Section */}
-          {task.externalNumber && (
-            <div className="space-y-2 rounded-md border p-3 bg-accent/20">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <GitBranch className="size-4 text-muted-foreground" />
-                  Tích hợp Git ({task.externalProvider === "github" ? "GitHub" : "GitLab"})
-                </span>
+          <div className="space-y-2 rounded-md border p-3 bg-accent/20">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <GitBranch className="size-4 text-muted-foreground" />
+                Tích hợp Git {task.externalProvider ? `(${task.externalProvider === "github" ? "GitHub" : "GitLab"})` : ""}
+              </span>
+              {task.externalNumber && (
                 <a
                   href={task.externalUrl || undefined}
                   target="_blank"
@@ -299,7 +299,8 @@ export function EditTaskDialog({
                   #{task.externalNumber}
                   <ExternalLink className="size-3" />
                 </a>
-              </div>
+              )}
+            </div>
 
               {!createdBranchName ? (
                 <Button
@@ -338,7 +339,6 @@ export function EditTaskDialog({
                 </div>
               )}
             </div>
-          )}
 
           <DialogFooter>
             {canEdit ? (
