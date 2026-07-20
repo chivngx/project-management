@@ -24,16 +24,20 @@ export function useRealtime(
        window.location.hostname === "127.0.0.1" || 
        window.location.port === "3000");
 
-    const socketUrl = isLocal
-      ? `${window.location.protocol}//${window.location.hostname}:3003`
-      : "/";
-    const socketOptions = isLocal
-      ? { path: "/", transports: ["websocket", "polling"] }
-      : {
-          path: "/",
-          transports: ["websocket", "polling"],
-          query: { XTransformPort: "3003" },
-        };
+    const envSocketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
+
+    // Use environment variable if provided (for production/staging).
+    // Fallback to local 3003 if on localhost.
+    const socketUrl = envSocketUrl 
+      ? envSocketUrl 
+      : isLocal 
+        ? `${window.location.protocol}//${window.location.hostname}:3003`
+        : "/";
+        
+    const socketOptions = {
+      path: "/",
+      transports: ["websocket", "polling"] as any[],
+    };
 
     const s = io(socketUrl, socketOptions);
     s.on("connect", () => {
