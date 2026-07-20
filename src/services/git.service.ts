@@ -740,7 +740,7 @@ export const GitService = {
     if (!integration) {
       const list = await GitIntegrationRepository.findByProjectId(task.projectId);
       if (list.length > 0) {
-        integration = list[0];
+        integration = await GitIntegrationRepository.findById(list[0].id);
       }
     }
 
