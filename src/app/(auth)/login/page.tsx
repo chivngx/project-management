@@ -206,33 +206,6 @@ export default function LoginPage() {
         Google
       </Button>
 
-      {/* Demo credentials */}
-      {process.env.NODE_ENV === "development" && (
-        <div className="rounded-lg border border-dashed bg-muted/40 p-4 text-xs text-muted-foreground space-y-1">
-          <p className="font-semibold text-foreground">🔑 Tài khoản demo:</p>
-          <p>
-            Email:{" "}
-            <button
-              type="button"
-              className="font-mono text-foreground hover:underline"
-              onClick={() => setEmail("alex@example.com")}
-            >
-              alex@example.com
-            </button>
-          </p>
-          <p>
-            Mật khẩu:{" "}
-            <button
-              type="button"
-              className="font-mono text-foreground hover:underline"
-              onClick={() => setPassword("password123")}
-            >
-              password123
-            </button>
-          </p>
-        </div>
-      )}
-
       {/* Register link */}
       <div className="text-center text-sm text-muted-foreground">
         Chưa có tài khoản?{" "}
